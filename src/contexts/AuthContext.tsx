@@ -28,8 +28,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     api.auth
       .me()
       .then((freshUser) => {
-        setUser(freshUser);
-        localStorage.setItem('unifin_user', JSON.stringify(freshUser));
+        if (freshUser) {
+          setUser(freshUser);
+          localStorage.setItem('unifin_user', JSON.stringify(freshUser));
+        } else {
+          setUser(null);
+          localStorage.removeItem('unifin_user');
+        }
       })
       .catch(() => {
         setUser(null);

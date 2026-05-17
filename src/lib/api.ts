@@ -138,7 +138,7 @@ export const api = {
       request<{ success: boolean }>('POST', '/auth/logout.php'),
 
     me: () =>
-      request<User>('GET', '/auth/me.php'),
+      request<User | null>('GET', '/auth/me.php'),
   },
 
   users: {
