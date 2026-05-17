@@ -120,5 +120,6 @@ function formatUser(array $row): array
         'student_id'    => $row['student_id'],
         'role'          => $row['role'],
         'allowed_pages' => isset($row['allowed_pages']) ? json_decode($row['allowed_pages'], true) : null,
+        'profile_image' => $row['profile_image'] ?? null,
     ];
 }

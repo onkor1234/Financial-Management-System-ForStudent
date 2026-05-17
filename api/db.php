@@ -113,6 +113,11 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS `budget_additions` (
     FOREIGN KEY (`created_by`) REFERENCES `users`(`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
+// ─── Auto-migration: add profile_image column if missing ─────────────────────
+try {
+    $pdo->exec("ALTER TABLE `users` ADD COLUMN `profile_image` LONGTEXT DEFAULT NULL");
+} catch (PDOException $e) { /* column already exists */ }
+
 // ─── Seed: insert default users only when the table is empty ─────────────────
 
 $userCount = (int)$pdo->query("SELECT COUNT(*) FROM `users`")->fetchColumn();

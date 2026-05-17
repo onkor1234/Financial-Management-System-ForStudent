@@ -1,12 +1,17 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { LayoutDashboard, Users, Receipt, FileText, LogOut, LogIn, Menu, X, Layers, BookOpen, Wallet, UserCog } from 'lucide-react';
-import { useState } from 'react';
+import { api } from '../lib/api';
+import { LayoutDashboard, Users, Receipt, FileText, LogOut, LogIn, Menu, X, Layers, BookOpen, Wallet, UserCog, Pencil } from 'lucide-react';
+import { useState, useRef } from 'react';
 
 export function Layout() {
-  const { user, logout } = useAuth();
+  const { user, logout, updateUser } = useAuth();
   const location = useLocation();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const allNavigation = [
     { name: 'แดชบอร์ด',              href: '/',         icon: LayoutDashboard },
@@ -33,6 +38,46 @@ export function Layout() {
   }
 
   const showSidebar = !!user;
+
+  const displayName = user ? (user.name?.trim() || user.username) : '';
+  const initials = displayName.slice(0, 2).toUpperCase();
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setImagePreview(reader.result as string);
+    reader.readAsDataURL(file);
+  }
+
+  async function handleSaveImage() {
+    if (!imagePreview) return;
+    setUploading(true);
+    try {
+      const updated = await api.auth.updateProfileImage(imagePreview);
+      updateUser(updated);
+      setShowImageModal(false);
+      setImagePreview(null);
+    } catch {
+      alert('เกิดข้อผิดพลาด กรุณาลองใหม่');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleRemoveImage() {
+    setUploading(true);
+    try {
+      const updated = await api.auth.updateProfileImage(null);
+      updateUser(updated);
+      setShowImageModal(false);
+      setImagePreview(null);
+    } catch {
+      alert('เกิดข้อผิดพลาด กรุณาลองใหม่');
+    } finally {
+      setUploading(false);
+    }
+  }
 
   return (
     <div className="min-h-screen bg-[#f1f5f9] font-sans text-slate-800 flex flex-col md:flex-row overflow-hidden">
@@ -81,9 +126,29 @@ export function Layout() {
               <div className="p-6 bg-slate-900 mt-auto">
                 <div className="space-y-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-sm font-bold uppercase">{user.username.slice(0,2)}</div>
-                    <div>
-                      <p className="text-xs font-semibold">{user.username}</p>
+                    {/* Avatar with edit overlay */}
+                    <button
+                      onClick={() => { setImagePreview(null); setShowImageModal(true); }}
+                      className="relative w-10 h-10 rounded-full flex-shrink-0 group"
+                      title="เปลี่ยนรูปโปรไฟล์"
+                    >
+                      {user.profile_image ? (
+                        <img
+                          src={user.profile_image}
+                          alt={displayName}
+                          className="w-10 h-10 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-sm font-bold uppercase">
+                          {initials}
+                        </div>
+                      )}
+                      <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Pencil className="h-4 w-4 text-white" />
+                      </div>
+                    </button>
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold truncate">{displayName}</p>
                       <p className="text-[10px] text-slate-500 capitalize">บทบาท: {user.role === 'admin' ? 'ผู้ดูแลระบบ' : 'ฝ่ายปฏิบัติการ'}</p>
                     </div>
                   </div>
@@ -148,10 +213,70 @@ export function Layout() {
 
       {/* Mobile backdrop */}
       {isSidebarOpen && showSidebar && (
-        <div 
-          className="fixed inset-0 z-30 bg-slate-900 bg-opacity-75 transition-opacity md:hidden" 
+        <div
+          className="fixed inset-0 z-30 bg-slate-900 bg-opacity-75 transition-opacity md:hidden"
           onClick={() => setIsSidebarOpen(false)}
         />
+      )}
+
+      {/* Profile Image Modal */}
+      {showImageModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-white rounded-xl shadow-xl w-80 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-bold text-slate-800">เปลี่ยนรูปโปรไฟล์</h3>
+              <button onClick={() => { setShowImageModal(false); setImagePreview(null); }} className="text-slate-400 hover:text-slate-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Preview */}
+            <div className="flex justify-center mb-4">
+              <div className="w-24 h-24 rounded-full overflow-hidden bg-slate-200 flex items-center justify-center">
+                {imagePreview ? (
+                  <img src={imagePreview} alt="preview" className="w-full h-full object-cover" />
+                ) : user?.profile_image ? (
+                  <img src={user.profile_image} alt={displayName} className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-2xl font-bold text-slate-500 uppercase">{initials}</span>
+                )}
+              </div>
+            </div>
+
+            {/* File input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleFileChange}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full mb-2 px-4 py-2 text-sm font-semibold border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50 transition-colors"
+            >
+              เลือกรูปภาพ
+            </button>
+
+            <button
+              onClick={handleSaveImage}
+              disabled={!imagePreview || uploading}
+              className="w-full mb-2 px-4 py-2 text-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {uploading ? 'กำลังบันทึก...' : 'บันทึก'}
+            </button>
+
+            {user?.profile_image && (
+              <button
+                onClick={handleRemoveImage}
+                disabled={uploading}
+                className="w-full px-4 py-2 text-sm font-semibold text-red-600 border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-40 transition-colors"
+              >
+                ลบรูปโปรไฟล์
+              </button>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

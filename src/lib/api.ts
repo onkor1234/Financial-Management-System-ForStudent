@@ -9,6 +9,7 @@ export interface User {
   student_id: string | null;
   role: Role;
   allowed_pages?: string[];
+  profile_image?: string | null;
 }
 
 export interface Student {
@@ -148,6 +149,9 @@ export const api = {
 
     me: () =>
       request<User | null>('GET', '/auth/me.php'),
+
+    updateProfileImage: (profile_image: string | null) =>
+      request<User>('PUT', '/profile.php', { profile_image }),
   },
 
   users: {
