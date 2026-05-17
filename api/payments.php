@@ -46,8 +46,8 @@ if ($id) {
 
 $isPaid        = isset($body['is_paid']) ? (bool)$body['is_paid'] : (bool)$payment['is_paid'];
 $receiptImage  = array_key_exists('receipt_image', $body)
-                    ? $body['receipt_image']
-                    : $payment['receipt_image'];
+                    ? normalizeReceiptImage($body['receipt_image'])
+                    : normalizeReceiptImage($payment['receipt_image']);
 $paidAt = $isPaid
     ? ($payment['paid_at'] ?? date('Y-m-d H:i:s'))
     : null;
@@ -70,6 +70,6 @@ jsonResponse([
     'request_id'    => (int)$updated['request_id'],
     'student_id'    => (int)$updated['student_id'],
     'is_paid'       => (bool)$updated['is_paid'],
-    'receipt_image' => $updated['receipt_image'],
+    'receipt_image' => normalizeReceiptImage($updated['receipt_image']),
     'paid_at'       => $updated['paid_at'],
 ]);

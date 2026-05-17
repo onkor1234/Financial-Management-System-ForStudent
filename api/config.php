@@ -56,6 +56,44 @@ function getBody(): array
     return json_decode($raw, true) ?? [];
 }
 
+function normalizeReceiptImage(mixed $value): ?string
+{
+    if (!is_string($value)) {
+        return null;
+    }
+
+    $value = trim($value);
+    if ($value === '') {
+        return null;
+    }
+
+    if (preg_match('/^data:image\/[a-z0-9.+-]+;base64,/i', $value) === 1) {
+        return $value;
+    }
+    if (preg_match('/^(https?:\/\/|blob:|\/)/i', $value) === 1) {
+        return $value;
+    }
+
+    $raw = preg_replace('/\s+/', '', $value);
+    if (!is_string($raw) || $raw === '') {
+        return null;
+    }
+    if (preg_match('/^[A-Za-z0-9+\/=]+$/', $raw) !== 1) {
+        return $value;
+    }
+
+    $mime = 'image/jpeg';
+    if (str_starts_with($raw, 'iVBORw0KGgo')) {
+        $mime = 'image/png';
+    } elseif (str_starts_with($raw, 'R0lGOD')) {
+        $mime = 'image/gif';
+    } elseif (str_starts_with($raw, 'UklGR')) {
+        $mime = 'image/webp';
+    }
+
+    return "data:$mime;base64,$raw";
+}
+
 function requireAuth(): array
 {
     if (empty($_SESSION['user_id'])) {

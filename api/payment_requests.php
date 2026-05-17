@@ -83,7 +83,7 @@ switch ($method) {
                         'request_id'    => (int)$p['request_id'],
                         'student_id'    => (int)$p['student_id'],
                         'is_paid'       => (bool)$p['is_paid'],
-                        'receipt_image' => $p['receipt_image'],
+                        'receipt_image' => normalizeReceiptImage($p['receipt_image']),
                         'paid_at'       => $p['paid_at'],
                     ] : null,
                 ];

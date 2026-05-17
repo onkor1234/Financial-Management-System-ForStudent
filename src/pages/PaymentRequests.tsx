@@ -20,6 +20,7 @@ export function PaymentRequests() {
   const [studentsPayments, setStudentsPayments]     = useState<StudentPayment[]>([]);
   const [detailFilterSection, setDetailFilterSection] = useState('');
   const [detailLoading, setDetailLoading]           = useState(false);
+  const [previewImage, setPreviewImage]             = useState<string | null>(null);
 
   useEffect(() => { loadAll(); }, []);
 
@@ -54,6 +55,7 @@ export function PaymentRequests() {
   const openDetails = async (req: PaymentRequest) => {
     setDetailLoading(true);
     setDetailFilterSection('');
+    setPreviewImage(null);
     try {
       const details = await api.paymentRequests.getDetails(req.id);
       setSelectedReq(details);
@@ -63,6 +65,11 @@ export function PaymentRequests() {
     } finally {
       setDetailLoading(false);
     }
+  };
+
+  const closeDetails = () => {
+    setSelectedReq(null);
+    setPreviewImage(null);
   };
 
   const togglePayment = async (studentId: number, paymentId: number | undefined, currentPaid: boolean) => {
@@ -240,7 +247,7 @@ export function PaymentRequests() {
       {selectedReq && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
-            <div className="fixed inset-0 transition-opacity bg-slate-900 bg-opacity-75" onClick={() => setSelectedReq(null)} />
+            <div className="fixed inset-0 transition-opacity bg-slate-900 bg-opacity-75" onClick={closeDetails} />
             <div className="relative inline-block w-full max-w-3xl p-6 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-xl border border-slate-200">
               <div className="flex justify-between items-start mb-4">
                 <div>
@@ -310,7 +317,13 @@ export function PaymentRequests() {
                                         onChange={(e) => handleReceiptUpload(student.id, payment?.id, e)} />
                                     </label>
                                     {payment?.receipt_image && (
-                                      <a href={payment.receipt_image} target="_blank" rel="noreferrer" className="text-blue-600 text-xs font-bold hover:underline">ดูรูป</a>
+                                      <button
+                                        type="button"
+                                        onClick={() => setPreviewImage(payment.receipt_image ?? null)}
+                                        className="text-blue-600 text-xs font-bold hover:underline"
+                                      >
+                                        ดูรูป
+                                      </button>
                                     )}
                                   </div>
                                 </td>
@@ -325,13 +338,37 @@ export function PaymentRequests() {
               )}
 
               <div className="mt-5 sm:mt-6">
-                <button type="button" onClick={() => setSelectedReq(null)}
+                <button type="button" onClick={closeDetails}
                   className="w-full inline-flex justify-center rounded-md border border-slate-200 px-4 py-2 bg-slate-50 text-sm font-bold text-slate-700 hover:bg-slate-100">
                   ปิดหน้านี้
                 </button>
               </div>
             </div>
           </div>
+
+          {previewImage && (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center px-4 py-6">
+              <div className="absolute inset-0 bg-slate-900/80" onClick={() => setPreviewImage(null)} />
+              <div className="relative w-full max-w-4xl bg-white border border-slate-200 rounded-lg shadow-xl p-3">
+                <div className="flex justify-end mb-2">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewImage(null)}
+                    className="px-3 py-1.5 bg-slate-100 text-slate-700 text-xs font-bold rounded hover:bg-slate-200"
+                  >
+                    ปิดรูป
+                  </button>
+                </div>
+                <div className="max-h-[75vh] overflow-auto flex items-center justify-center">
+                  <img
+                    src={previewImage}
+                    alt="หลักฐานการชำระเงิน"
+                    className="max-h-[70vh] w-auto object-contain"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
