@@ -112,7 +112,7 @@ export function Layout() {
                 className="hidden sm:flex items-center space-x-2 px-4 py-2 border border-blue-200 shadow-sm text-sm font-bold rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors"
               >
                 <LogIn className="h-4 w-4" />
-                <span>เข้าสู่ระบบพนักงาน</span>
+                <span>เข้าสู่ระบบ</span>
               </Link>
             )}
             {/* Mobile login button (icon only) */}

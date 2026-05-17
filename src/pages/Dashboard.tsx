@@ -61,7 +61,7 @@ export function Dashboard() {
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
           <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">รออนุมัติเบิกเงิน</p>
           <p className="text-2xl font-bold mt-1 text-amber-600">฿{data.pendingExpenseTotal.toLocaleString()}</p>
-          <p className="text-xs text-slate-400 mt-2">{data.pendingExpenseCount} รายการรอ Admin</p>
+          <p className="text-xs text-slate-400 mt-2">{data.pendingExpenseCount} รายการรอ อนุมัติ</p>
         </div>
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
           <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">นักศึกษาทั้งหมด</p>
