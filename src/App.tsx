@@ -58,7 +58,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Layout />}>
-            <Route index element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            <Route index element={<Dashboard />} />
             <Route path="login" element={<Login />} />
             <Route 
               path="sections" 

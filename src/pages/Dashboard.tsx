@@ -4,7 +4,14 @@ import { format } from 'date-fns';
 import { CheckCircle, XCircle } from 'lucide-react';
 
 export function Dashboard() {
-  const [data, setData]               = useState<DashboardData | null>(null);
+  const emptyData: DashboardData = {
+    totalBudget: 0, unpaidCount: 0,
+    pendingExpenseTotal: 0, pendingExpenseCount: 0,
+    studentCount: 0, sectionCount: 0,
+    recentExpenses: [], paymentRequests: [], budgetAdditions: [],
+  };
+
+  const [data, setData]               = useState<DashboardData>(emptyData);
   const [selectedReq, setSelectedReq] = useState<PaymentRequest | null>(null);
   const [detailFilterSection, setDetailFilterSection] = useState('');
   const [detailData, setDetailData]   = useState<{ student: { id: number; student_id: string; first_name: string; last_name: string; section: string }; payment: { is_paid: boolean; receipt_image: string | null } | null }[]>([]);
@@ -14,8 +21,8 @@ export function Dashboard() {
   const loadData = async () => {
     try {
       setData(await api.dashboard.getData());
-    } catch (err) {
-      console.error(err);
+    } catch {
+      // ไม่ต้องทำอะไร — คงค่า emptyData ไว้ แสดงตัวเลข 0
     }
   };
 
@@ -34,14 +41,6 @@ export function Dashboard() {
   };
 
   const closeModal = () => { setSelectedReq(null); setDetailData([]); };
-
-  if (!data) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="text-slate-500 text-sm">กำลังโหลดข้อมูล...</div>
-      </div>
-    );
-  }
 
   const filteredDetail = detailFilterSection
     ? detailData.filter(d => d.student.section === detailFilterSection)
