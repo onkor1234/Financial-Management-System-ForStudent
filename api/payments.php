@@ -8,14 +8,41 @@ if ($_SERVER['REQUEST_METHOD'] !== 'PATCH') {
     jsonError('Method not allowed', 405);
 }
 
-$id   = (int)($_GET['id'] ?? 0);
-$body = getBody();
-if (!$id) jsonError('Missing id');
+$body      = getBody();
+$id        = (int)($_GET['id'] ?? 0);
+$requestId = (int)($body['request_id'] ?? 0);
+$studentId = (int)($body['student_id'] ?? 0);
 
-$stmt = $pdo->prepare("SELECT * FROM `payments` WHERE id = ?");
-$stmt->execute([$id]);
-$payment = $stmt->fetch();
-if (!$payment) jsonError('Payment not found', 404);
+if (!$id && (!$requestId || !$studentId)) {
+    jsonError('Missing id or request_id/student_id');
+}
+
+$stmtById = $pdo->prepare("SELECT * FROM `payments` WHERE id = ?");
+$payment  = null;
+
+if ($id) {
+    $stmtById->execute([$id]);
+    $payment = $stmtById->fetch();
+    if (!$payment) jsonError('Payment not found', 404);
+} else {
+    $stmt = $pdo->prepare(
+        "SELECT * FROM `payments` WHERE request_id = ? AND student_id = ? ORDER BY id DESC LIMIT 1"
+    );
+    $stmt->execute([$requestId, $studentId]);
+    $payment = $stmt->fetch();
+
+    if (!$payment) {
+        $pdo->prepare(
+            "INSERT INTO `payments` (request_id, student_id, is_paid) VALUES (?, ?, 0)"
+        )->execute([$requestId, $studentId]);
+        $id = (int)$pdo->lastInsertId();
+
+        $stmtById->execute([$id]);
+        $payment = $stmtById->fetch();
+    } else {
+        $id = (int)$payment['id'];
+    }
+}
 
 $isPaid        = isset($body['is_paid']) ? (bool)$body['is_paid'] : (bool)$payment['is_paid'];
 $receiptImage  = array_key_exists('receipt_image', $body)
@@ -35,8 +62,8 @@ $pdo->prepare(
     "UPDATE `payments` SET is_paid=?, receipt_image=?, paid_at=? WHERE id=?"
 )->execute([(int)$isPaid, $receiptImage, $paidAt, $id]);
 
-$stmt->execute([$id]);
-$updated = $stmt->fetch();
+$stmtById->execute([$id]);
+$updated = $stmtById->fetch();
 
 jsonResponse([
     'id'            => (int)$updated['id'],

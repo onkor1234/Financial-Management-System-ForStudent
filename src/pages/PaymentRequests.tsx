@@ -65,13 +65,17 @@ export function PaymentRequests() {
     }
   };
 
-  const togglePayment = async (paymentId: number | undefined, currentPaid: boolean) => {
-    if (!paymentId) return;
+  const togglePayment = async (studentId: number, paymentId: number | undefined, currentPaid: boolean) => {
+    if (!selectedReq) return;
     try {
-      const updated = await api.payments.update(paymentId, { is_paid: !currentPaid });
+      const updated = await api.payments.update(paymentId, {
+        request_id: selectedReq.id,
+        student_id: studentId,
+        is_paid: !currentPaid,
+      });
       setStudentsPayments(prev =>
         prev.map(sp =>
-          sp.payment?.id === paymentId
+          sp.student.id === studentId
             ? { ...sp, payment: updated }
             : sp
         )
@@ -81,20 +85,26 @@ export function PaymentRequests() {
     }
   };
 
-  const handleReceiptUpload = async (paymentId: number | undefined, e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!paymentId || !e.target.files || e.target.files.length === 0) return;
+  const handleReceiptUpload = async (
+    studentId: number,
+    paymentId: number | undefined,
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    if (!selectedReq || !e.target.files || e.target.files.length === 0) return;
     const file   = e.target.files[0];
     const reader = new FileReader();
     reader.onload = async (event) => {
       if (!event.target || typeof event.target.result !== 'string') return;
       try {
         const updated = await api.payments.update(paymentId, {
+          request_id: selectedReq.id,
+          student_id: studentId,
           receipt_image: event.target.result,
           is_paid: true,
         });
         setStudentsPayments(prev =>
           prev.map(sp =>
-            sp.payment?.id === paymentId
+            sp.student.id === studentId
               ? { ...sp, payment: updated }
               : sp
           )
@@ -288,7 +298,7 @@ export function PaymentRequests() {
                                 <td className="px-4 py-3 whitespace-nowrap text-right font-medium">
                                   <div className="flex items-center justify-end space-x-2">
                                     <button
-                                      onClick={() => togglePayment(payment?.id, payment?.is_paid ?? false)}
+                                      onClick={() => togglePayment(student.id, payment?.id, payment?.is_paid ?? false)}
                                       className={`inline-flex items-center p-1.5 rounded-full transition-colors ${payment?.is_paid ? 'bg-green-100 text-green-600 hover:bg-green-200' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}
                                       title={payment?.is_paid ? 'เปลี่ยนเป็นยังไม่ได้จ่าย' : 'เปลี่ยนเป็นจ่ายแล้ว'}
                                     >
@@ -297,7 +307,7 @@ export function PaymentRequests() {
                                     <label className="cursor-pointer inline-flex items-center px-3 py-1.5 border border-slate-200 rounded text-xs font-bold text-slate-600 bg-slate-50 hover:bg-slate-100">
                                       อัปโหลดหลักฐาน
                                       <input type="file" accept="image/*" className="hidden"
-                                        onChange={(e) => handleReceiptUpload(payment?.id, e)} />
+                                        onChange={(e) => handleReceiptUpload(student.id, payment?.id, e)} />
                                     </label>
                                     {payment?.receipt_image && (
                                       <a href={payment.receipt_image} target="_blank" rel="noreferrer" className="text-blue-600 text-xs font-bold hover:underline">ดูรูป</a>

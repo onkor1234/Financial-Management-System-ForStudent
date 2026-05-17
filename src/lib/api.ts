@@ -225,9 +225,14 @@ export const api = {
 
   payments: {
     update: (
-      id: number,
-      data: { is_paid?: boolean; receipt_image?: string | null }
-    ) => request<Payment>('PATCH', `/payments.php?id=${id}`, data),
+      id: number | undefined,
+      data: {
+        is_paid?: boolean;
+        receipt_image?: string | null;
+        request_id?: number;
+        student_id?: number;
+      }
+    ) => request<Payment>('PATCH', id ? `/payments.php?id=${id}` : '/payments.php', data),
   },
 
   expenseRequests: {
