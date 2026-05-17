@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { api, BudgetAddition } from '../lib/api';
+import { api, BudgetAddition, formatMoney } from '../lib/api';
 import { format } from 'date-fns';
 import { Plus, Wallet } from 'lucide-react';
 
@@ -58,7 +58,7 @@ export function Budget() {
       <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
         <div>
           <p className="text-sm font-medium text-slate-500">งบประมาณรวมที่เติมเข้าระบบ</p>
-          <h2 className="text-3xl font-bold text-slate-900 mt-1">฿{totalAdded.toLocaleString()}</h2>
+          <h2 className="text-3xl font-bold text-slate-900 mt-1">฿{formatMoney(totalAdded)}</h2>
         </div>
         <div className="p-4 bg-green-100 text-green-600 rounded-full">
           <Wallet className="w-8 h-8" />
@@ -84,7 +84,7 @@ export function Budget() {
                 <tr key={addition.id} className="hover:bg-slate-50">
                   <td className="px-6 py-4 whitespace-nowrap text-slate-900 font-medium">{addition.id}</td>
                   <td className="px-6 py-4 text-slate-700">{addition.description}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-green-600 font-bold">+฿{addition.amount.toLocaleString()}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-green-600 font-bold">+฿{formatMoney(addition.amount)}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-slate-500">
                     {format(new Date(addition.created_at), 'dd MMM yyyy HH:mm')}
                   </td>
@@ -104,8 +104,8 @@ export function Budget() {
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
                   <label className="block text-sm font-bold text-slate-700">จำนวนเงิน (฿)</label>
-                  <input type="number" required min="1" value={amount || ''}
-                    onChange={e => setAmount(Number(e.target.value))}
+                  <input type="number" required min="0.01" step="0.01" value={amount || ''}
+                    onChange={e => setAmount(parseFloat(e.target.value) || 0)}
                     className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm focus:ring-green-500 focus:border-green-500 text-slate-800" />
                 </div>
                 <div>

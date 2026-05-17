@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { api, PaymentRequest, PaymentRequestWithDetails, StudentPayment, Section } from '../lib/api';
+import { api, PaymentRequest, PaymentRequestWithDetails, StudentPayment, Section, formatMoney } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Plus, Check, Download, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -189,7 +189,7 @@ export function PaymentRequests() {
                 <tr key={req.id} className="hover:bg-slate-50 cursor-pointer" onClick={() => openDetails(req)}>
                   <td className="px-6 py-4 font-medium text-slate-900">{req.title}</td>
                   <td className="px-6 py-4 text-slate-600">{req.target_sections.join(', ')}</td>
-                  <td className="px-6 py-4 font-bold text-slate-900">฿{req.amount_per_person.toLocaleString()}</td>
+                  <td className="px-6 py-4 font-bold text-slate-900">฿{formatMoney(req.amount_per_person)}</td>
                   <td className="px-6 py-4 text-slate-500">{format(new Date(req.created_at), 'dd MMM yyyy')}</td>
                   <td className="px-6 py-4 text-right">
                     <button
@@ -259,8 +259,8 @@ export function PaymentRequests() {
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-slate-700">จำนวนเงินต่อคน (฿)</label>
-                  <input type="number" required min="1" value={amount}
-                    onChange={e => setAmount(parseInt(e.target.value) || 0)}
+                  <input type="number" required min="0.01" step="0.01" value={amount}
+                    onChange={e => setAmount(parseFloat(e.target.value) || 0)}
                     className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm focus:ring-blue-500 focus:border-blue-500 text-slate-800" />
                 </div>
                 <div className="mt-6 flex justify-end space-x-3">
@@ -284,7 +284,7 @@ export function PaymentRequests() {
               <div className="flex justify-between items-start mb-4">
                 <div>
                   <h3 className="text-xl font-bold text-slate-900">รายละเอียด {selectedReq.title}</h3>
-                  <p className="text-sm text-slate-500 mt-1">กลุ่มเรียน: {selectedReq.target_sections.join(', ')} | จำนวนเงิน: ฿{selectedReq.amount_per_person.toLocaleString()}</p>
+                  <p className="text-sm text-slate-500 mt-1">กลุ่มเรียน: {selectedReq.target_sections.join(', ')} | จำนวนเงิน: ฿{formatMoney(selectedReq.amount_per_person)}</p>
                 </div>
                 <div className="flex items-center gap-3">
                   {uniqueSections.length > 1 && (

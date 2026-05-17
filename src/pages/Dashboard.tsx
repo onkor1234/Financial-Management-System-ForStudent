@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { api, DashboardData, PaymentRequest } from '../lib/api';
+import { api, DashboardData, PaymentRequest, formatMoney } from '../lib/api';
 import { format } from 'date-fns';
 import { CheckCircle, XCircle, Banknote, ClipboardList, Clock, Users, TrendingUp, Receipt, PlusCircle } from 'lucide-react';
 
@@ -61,7 +61,7 @@ export function Dashboard() {
                 <Banknote className="w-5 h-5 text-white" />
               </div>
             </div>
-            <p className="text-3xl font-bold text-white">฿{data.totalBudget.toLocaleString()}</p>
+            <p className="text-3xl font-bold text-white">฿{formatMoney(data.totalBudget)}</p>
             <p className="text-xs text-emerald-100 mt-2 flex items-center gap-1">
               <TrendingUp className="w-3 h-3" /> งบประมาณปัจจุบัน
             </p>
@@ -95,7 +95,7 @@ export function Dashboard() {
                 <Receipt className="w-5 h-5 text-white" />
               </div>
             </div>
-            <p className="text-3xl font-bold text-white">฿{data.pendingExpenseTotal.toLocaleString()}</p>
+            <p className="text-3xl font-bold text-white">฿{formatMoney(data.pendingExpenseTotal)}</p>
             <p className="text-xs text-amber-900/60 mt-2 flex items-center gap-1">
               <Clock className="w-3 h-3" /> {data.pendingExpenseCount} รายการรออนุมัติ
             </p>
@@ -145,7 +145,7 @@ export function Dashboard() {
                   <tr key={req.id} className="hover:bg-slate-50 cursor-pointer" onClick={() => openModal(req)}>
                     <td className="px-6 py-4 font-medium text-slate-800">{req.title}</td>
                     <td className="px-6 py-4 text-slate-600">{req.target_sections.join(', ')}</td>
-                    <td className="px-6 py-4 font-bold text-slate-800">฿{req.amount_per_person.toLocaleString()}</td>
+                    <td className="px-6 py-4 font-bold text-slate-800">฿{formatMoney(req.amount_per_person)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -175,7 +175,7 @@ export function Dashboard() {
                 ) : data.recentExpenses.map(exp => (
                   <tr key={exp.id} className="hover:bg-slate-50">
                     <td className="px-6 py-4 font-medium text-slate-800">{exp.title}</td>
-                    <td className="px-6 py-4 font-bold text-slate-800">฿{exp.total_amount.toLocaleString()}</td>
+                    <td className="px-6 py-4 font-bold text-slate-800">฿{formatMoney(exp.total_amount)}</td>
                     <td className="px-6 py-4">
                       <span className={`px-2.5 py-1 text-[11px] font-bold rounded-full ${
                         exp.status === 'approved' ? 'bg-green-100 text-green-700' :
@@ -215,7 +215,7 @@ export function Dashboard() {
               ) : data.budgetAdditions.map(addition => (
                 <tr key={addition.id} className="hover:bg-slate-50">
                   <td className="px-6 py-4 font-medium text-slate-800">{addition.description}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-green-600 font-bold">+฿{addition.amount.toLocaleString()}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-green-600 font-bold">+฿{formatMoney(addition.amount)}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-slate-500">
                     {format(new Date(addition.created_at), 'dd MMM yyyy')}
                   </td>
@@ -234,7 +234,7 @@ export function Dashboard() {
               <h3 className="text-lg font-bold leading-6 text-slate-900 mb-4">รายละเอียด {selectedReq.title}</h3>
               <div className="text-sm text-slate-500 space-y-2">
                 <p><strong>เป้าหมายกลุ่มเรียน:</strong> {selectedReq.target_sections.join(', ')}</p>
-                <p><strong>จำนวนเงิน:</strong> ฿{selectedReq.amount_per_person.toLocaleString()} / คน</p>
+                <p><strong>จำนวนเงิน:</strong> ฿{formatMoney(selectedReq.amount_per_person)} / คน</p>
               </div>
 
               <div className="mt-6">

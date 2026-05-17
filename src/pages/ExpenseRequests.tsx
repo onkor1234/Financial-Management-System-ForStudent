@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { api, ExpenseRequest, ExpenseItem } from '../lib/api';
+import { api, ExpenseRequest, ExpenseItem, formatMoney } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Plus, Check, X, Eye, Download, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -122,7 +122,7 @@ export function ExpenseRequests() {
               ) : requests.map(req => (
                 <tr key={req.id} className="hover:bg-slate-50">
                   <td className="px-6 py-4 font-medium text-slate-900">{req.title}</td>
-                  <td className="px-6 py-4 font-bold text-blue-600">฿{req.total_amount.toLocaleString()}</td>
+                  <td className="px-6 py-4 font-bold text-blue-600">฿{formatMoney(req.total_amount)}</td>
                   <td className="px-6 py-4">
                     <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold uppercase ${
                       req.status === 'approved' ? 'bg-green-100 text-green-700' :
@@ -177,8 +177,8 @@ export function ExpenseRequests() {
                         <input type="text" placeholder="ชื่อสิ่งของ/รายการ" required value={item.name}
                           onChange={e => handleItemChange(index, 'name', e.target.value)}
                           className="flex-1 px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm text-slate-800" />
-                        <input type="number" placeholder="ราคา (฿)" required min="1" value={item.price || ''}
-                          onChange={e => handleItemChange(index, 'price', parseInt(e.target.value) || 0)}
+                        <input type="number" placeholder="ราคา (฿)" required min="0.01" step="0.01" value={item.price || ''}
+                          onChange={e => handleItemChange(index, 'price', parseFloat(e.target.value) || 0)}
                           className="w-32 px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm text-slate-800" />
                         <button type="button" onClick={() => handleRemoveItem(index)} className="p-1.5 text-slate-400 hover:text-red-500">
                           <Trash2 className="w-4 h-4" />
@@ -188,7 +188,7 @@ export function ExpenseRequests() {
                   </div>
                   <div className="mt-2 text-right">
                     <span className="text-sm font-bold text-slate-700">
-                      ยอดรวม: ฿{items.reduce((s, i) => s + (i.price || 0), 0).toLocaleString()}
+                      ยอดรวม: ฿{formatMoney(items.reduce((s, i) => s + (i.price || 0), 0))}
                     </span>
                   </div>
                 </div>
@@ -251,14 +251,14 @@ export function ExpenseRequests() {
                       {selectedItems.map(item => (
                         <tr key={item.id} className="hover:bg-slate-50">
                           <td className="px-4 py-2 whitespace-nowrap text-slate-800">{item.item_name}</td>
-                          <td className="px-4 py-2 whitespace-nowrap text-slate-800 text-right">{item.price.toLocaleString()}</td>
+                          <td className="px-4 py-2 whitespace-nowrap text-slate-800 text-right">{formatMoney(item.price)}</td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot className="bg-slate-50 font-bold">
                       <tr>
                         <td className="px-4 py-3 text-right">ยอดรวม:</td>
-                        <td className="px-4 py-3 text-right text-blue-600 font-bold">฿{selectedReq.total_amount.toLocaleString()}</td>
+                        <td className="px-4 py-3 text-right text-blue-600 font-bold">฿{formatMoney(selectedReq.total_amount)}</td>
                       </tr>
                     </tfoot>
                   </table>
