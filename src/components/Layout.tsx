@@ -96,7 +96,7 @@ export function Layout() {
           <div className="flex-1 flex flex-col min-h-0">
             <div className="p-6 border-b border-slate-700">
               <h1 className="text-xl font-bold tracking-tight text-blue-400">CMRU Finance<span className="text-white">Pro</span></h1>
-              <p className="text-xs text-slate-400 mt-1 uppercase tracking-widest font-semibold">คณะวิทยาศาสตร์</p>
+              <p className="text-xs text-slate-400 mt-1 uppercase tracking-widest font-semibold">คณะวิทยาศาสตร์และเทคโนโลยี</p>
             </div>
             <div className="flex-1 flex flex-col overflow-y-auto w-full pt-5 pb-4">
               <nav className="flex-1 px-4 space-y-2">
