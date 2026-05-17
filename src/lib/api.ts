@@ -221,6 +221,9 @@ export const api = {
       target_sections: string[];
       amount_per_person: number;
     }) => request<PaymentRequest>('POST', '/payment_requests.php', data),
+
+    delete: (id: number) =>
+      request<{ success: boolean }>('DELETE', `/payment_requests.php?id=${id}`),
   },
 
   payments: {

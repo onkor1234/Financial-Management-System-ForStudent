@@ -154,6 +154,21 @@ switch ($method) {
         $stmt->execute([$reqId]);
         jsonResponse(formatRequest($stmt->fetch()), 201);
 
+    case 'DELETE':
+        $id = (int)($_GET['id'] ?? 0);
+        if (!$id) {
+            jsonError('Missing id');
+        }
+
+        $stmt = $pdo->prepare("SELECT id FROM `payment_requests` WHERE id = ?");
+        $stmt->execute([$id]);
+        if (!$stmt->fetch()) {
+            jsonError('Not found', 404);
+        }
+
+        $pdo->prepare("DELETE FROM `payment_requests` WHERE id = ?")->execute([$id]);
+        jsonResponse(['success' => true]);
+
     default:
         jsonError('Method not allowed', 405);
 }

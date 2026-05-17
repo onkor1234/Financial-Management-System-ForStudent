@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api, PaymentRequest, PaymentRequestWithDetails, StudentPayment, Section } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
-import { Plus, Check, Download } from 'lucide-react';
+import { Plus, Check, Download, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import * as XLSX from 'xlsx';
 
@@ -21,6 +21,7 @@ export function PaymentRequests() {
   const [detailFilterSection, setDetailFilterSection] = useState('');
   const [detailLoading, setDetailLoading]           = useState(false);
   const [previewImage, setPreviewImage]             = useState<string | null>(null);
+  const [deletingRequestId, setDeletingRequestId]   = useState<number | null>(null);
 
   useEffect(() => { loadAll(); }, []);
 
@@ -70,6 +71,22 @@ export function PaymentRequests() {
   const closeDetails = () => {
     setSelectedReq(null);
     setPreviewImage(null);
+  };
+
+  const handleDeleteRequest = async (requestId: number) => {
+    if (!confirm('ยืนยันการลบรายการเรียกเก็บเงินนี้?')) return;
+    setDeletingRequestId(requestId);
+    try {
+      await api.paymentRequests.delete(requestId);
+      await loadAll();
+      if (selectedReq?.id === requestId) {
+        closeDetails();
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'ลบรายการล้มเหลว');
+    } finally {
+      setDeletingRequestId(null);
+    }
   };
 
   const togglePayment = async (studentId: number, paymentId: number | undefined, currentPaid: boolean) => {
@@ -162,17 +179,32 @@ export function PaymentRequests() {
                 <th className="px-6 py-3 border-b border-slate-100">กลุ่มเป้าหมาย</th>
                 <th className="px-6 py-3 border-b border-slate-100">ยอด/คน</th>
                 <th className="px-6 py-3 border-b border-slate-100">วันที่สร้าง</th>
+                <th className="px-6 py-3 border-b border-slate-100 text-right">ลบ</th>
               </tr>
             </thead>
             <tbody className="text-sm divide-y divide-slate-100">
               {requests.length === 0 ? (
-                <tr><td colSpan={4} className="px-6 py-4 text-center text-slate-500">ไม่พบรายการเรียกเก็บเงิน</td></tr>
+                <tr><td colSpan={5} className="px-6 py-4 text-center text-slate-500">ไม่พบรายการเรียกเก็บเงิน</td></tr>
               ) : requests.map(req => (
                 <tr key={req.id} className="hover:bg-slate-50 cursor-pointer" onClick={() => openDetails(req)}>
                   <td className="px-6 py-4 font-medium text-slate-900">{req.title}</td>
                   <td className="px-6 py-4 text-slate-600">{req.target_sections.join(', ')}</td>
                   <td className="px-6 py-4 font-bold text-slate-900">฿{req.amount_per_person.toLocaleString()}</td>
                   <td className="px-6 py-4 text-slate-500">{format(new Date(req.created_at), 'dd MMM yyyy')}</td>
+                  <td className="px-6 py-4 text-right">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleDeleteRequest(req.id);
+                      }}
+                      disabled={deletingRequestId === req.id}
+                      className="inline-flex items-center px-2.5 py-1.5 rounded-md text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 disabled:opacity-60"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 mr-1" />
+                      {deletingRequestId === req.id ? 'กำลังลบ...' : 'ลบ'}
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
