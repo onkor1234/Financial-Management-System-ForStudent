@@ -1,4 +1,3 @@
-import React from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { LayoutDashboard, Users, Receipt, FileText, LogOut, LogIn, Menu, X, Layers, BookOpen, Wallet, UserCog } from 'lucide-react';
@@ -9,23 +8,28 @@ export function Layout() {
   const location = useLocation();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  let navigation = [
-    { name: 'แดชบอร์ด', href: '/', icon: LayoutDashboard },
-    ...(user ? [
-      { name: 'รายการเรียกเก็บเงิน', href: '/payments', icon: Receipt },
-      { name: 'รายการเบิกจ่าย', href: '/expenses', icon: FileText },
-    ] : []),
-    ...(user?.role === 'admin' ? [
-      { name: 'จัดการสมาชิก', href: '/users', icon: UserCog },
-      { name: 'งบประมาณระบบ', href: '/budget', icon: Wallet },
-      { name: 'รายชื่อนักศึกษา', href: '/students', icon: Users },
-      { name: 'จัดการกลุ่มเรียน', href: '/sections', icon: Layers },
-      { name: 'จัดการสาขาวิชา', href: '/majors', icon: BookOpen },
-    ] : []),
+  const allNavigation = [
+    { name: 'แดชบอร์ด',              href: '/',         icon: LayoutDashboard },
+    { name: 'รายการเรียกเก็บเงิน',   href: '/payments', icon: Receipt },
+    { name: 'รายการเบิกจ่าย',        href: '/expenses', icon: FileText },
+    { name: 'งบประมาณระบบ',          href: '/budget',   icon: Wallet },
+    { name: 'รายชื่อนักศึกษา',       href: '/students', icon: Users },
+    { name: 'จัดการกลุ่มเรียน',      href: '/sections', icon: Layers },
+    { name: 'จัดการสาขาวิชา',        href: '/majors',   icon: BookOpen },
+    { name: 'จัดการสมาชิก',          href: '/users',    icon: UserCog },
   ];
 
-  if (user && user.allowedPages) {
-    navigation = navigation.filter(item => user.allowedPages!.includes(item.href));
+  const defaultOpPages = ['/', '/payments', '/expenses'];
+
+  let navigation;
+  if (!user) {
+    navigation = allNavigation.filter(item => item.href === '/');
+  } else if (user.allowed_pages && user.allowed_pages.length > 0) {
+    navigation = allNavigation.filter(item => user.allowed_pages!.includes(item.href));
+  } else {
+    navigation = user.role === 'admin'
+      ? allNavigation
+      : allNavigation.filter(item => defaultOpPages.includes(item.href));
   }
 
   const showSidebar = !!user;

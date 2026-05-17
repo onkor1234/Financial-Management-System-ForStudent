@@ -41,11 +41,16 @@ function ProtectedRoute({ children, requiredRole }: { children: React.ReactNode,
     return <Navigate to="/login" replace />;
   }
 
-  if (requiredRole && user.role !== 'admin' && user.role !== requiredRole) {
-    return <Navigate to="/" replace />;
+  // ถ้า user มี allowed_pages กำหนดไว้ → ใช้เป็น source of truth ไม่สนใจ requiredRole
+  if (user.allowed_pages && user.allowed_pages.length > 0) {
+    if (!user.allowed_pages.includes(location.pathname)) {
+      return <Navigate to="/" replace />;
+    }
+    return <>{children}</>;
   }
 
-  if (user.allowed_pages && !user.allowed_pages.includes(location.pathname)) {
+  // fallback: ไม่มี allowed_pages → ใช้ role-based check
+  if (requiredRole && user.role !== 'admin' && user.role !== requiredRole) {
     return <Navigate to="/" replace />;
   }
 
