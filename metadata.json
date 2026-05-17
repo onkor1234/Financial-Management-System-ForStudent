@@ -1,0 +1,8 @@
+{
+  "name": "UniFinance",
+  "description": "University Finance Management System with Dashboard, Student Management, Payment Requests, and Expense Approvals.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

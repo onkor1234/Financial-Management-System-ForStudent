@@ -1,0 +1,110 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { Layout } from './components/Layout';
+import { Dashboard } from './pages/Dashboard';
+import { Login } from './pages/Login';
+import { Students } from './pages/Students';
+import { Sections } from './pages/Sections';
+import { Majors } from './pages/Majors';
+import { Budget } from './pages/Budget';
+import { PaymentRequests } from './pages/PaymentRequests';
+import { ExpenseRequests } from './pages/ExpenseRequests';
+
+import { ManageUsers } from './pages/ManageUsers';
+
+// Protected Route Component
+function ProtectedRoute({ children, requiredRole }: { children: React.ReactNode, requiredRole?: 'admin' | 'operation' }) {
+  const { user } = useAuth();
+  const location = useLocation();
+  
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+  
+  if (requiredRole && user.role !== 'admin' && user.role !== requiredRole) {
+    return <Navigate to="/" replace />;
+  }
+
+  if (user.allowedPages && !user.allowedPages.includes(location.pathname)) {
+    return <Navigate to="/" replace />; // redirect to dashboard or maybe "unauthorized" page, but dash is fine
+  }
+
+  return <>{children}</>;
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Layout />}>
+            <Route index element={<Dashboard />} />
+            <Route path="login" element={<Login />} />
+            <Route 
+              path="sections" 
+              element={
+                <ProtectedRoute requiredRole="admin">
+                  <Sections />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="majors" 
+              element={
+                <ProtectedRoute requiredRole="admin">
+                  <Majors />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="budget" 
+              element={
+                <ProtectedRoute requiredRole="admin">
+                  <Budget />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="users" 
+              element={
+                <ProtectedRoute requiredRole="admin">
+                  <ManageUsers />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="students" 
+              element={
+                <ProtectedRoute requiredRole="admin">
+                  <Students />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="payments" 
+              element={
+                <ProtectedRoute>
+                  <PaymentRequests />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="expenses" 
+              element={
+                <ProtectedRoute>
+                  <ExpenseRequests />
+                </ProtectedRoute>
+              } 
+            />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
+  );
+}

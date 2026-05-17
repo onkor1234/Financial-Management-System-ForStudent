@@ -1,0 +1,154 @@
+import React from 'react';
+import { Outlet, Link, useLocation } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import { LayoutDashboard, Users, Receipt, FileText, LogOut, LogIn, Menu, X, Layers, BookOpen, Wallet, UserCog } from 'lucide-react';
+import { useState } from 'react';
+
+export function Layout() {
+  const { user, logout } = useAuth();
+  const location = useLocation();
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  let navigation = [
+    { name: 'แดชบอร์ด', href: '/', icon: LayoutDashboard },
+    ...(user ? [
+      { name: 'รายการเรียกเก็บเงิน', href: '/payments', icon: Receipt },
+      { name: 'รายการเบิกจ่าย', href: '/expenses', icon: FileText },
+    ] : []),
+    ...(user?.role === 'admin' ? [
+      { name: 'จัดการสมาชิก', href: '/users', icon: UserCog },
+      { name: 'งบประมาณระบบ', href: '/budget', icon: Wallet },
+      { name: 'รายชื่อนักศึกษา', href: '/students', icon: Users },
+      { name: 'จัดการกลุ่มเรียน', href: '/sections', icon: Layers },
+      { name: 'จัดการสาขาวิชา', href: '/majors', icon: BookOpen },
+    ] : []),
+  ];
+
+  if (user && user.allowedPages) {
+    navigation = navigation.filter(item => user.allowedPages!.includes(item.href));
+  }
+
+  const showSidebar = !!user;
+
+  return (
+    <div className="min-h-screen bg-[#f1f5f9] font-sans text-slate-800 flex flex-col md:flex-row overflow-hidden">
+      {/* Mobile sidebar toggle (Only show if sidebar should be shown) */}
+      {showSidebar && (
+        <div className="md:hidden fixed top-0 left-0 p-4 z-50">
+          <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 bg-white rounded-md shadow-sm">
+            {isSidebarOpen ? <X className="h-6 w-6 text-slate-600" /> : <Menu className="h-6 w-6 text-slate-600" />}
+          </button>
+        </div>
+      )}
+
+      {/* Sidebar - Only render if user is logged in */}
+      {showSidebar && (
+        <div className={`fixed inset-y-0 left-0 z-40 w-64 bg-[#0f172a] text-white transform transition-transform duration-200 ease-in-out md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:static md:flex-shrink-0 flex flex-col`}>
+          <div className="flex-1 flex flex-col min-h-0">
+            <div className="p-6 border-b border-slate-700">
+              <h1 className="text-xl font-bold tracking-tight text-blue-400">CMRU Finance<span className="text-white">Pro</span></h1>
+              <p className="text-xs text-slate-400 mt-1 uppercase tracking-widest font-semibold">คณะวิทยาศาสตร์</p>
+            </div>
+            <div className="flex-1 flex flex-col overflow-y-auto w-full pt-5 pb-4">
+              <nav className="flex-1 px-4 space-y-2">
+                {navigation.map((item) => {
+                  const isActive = location.pathname === item.href;
+                  return (
+                    <Link
+                      key={item.name}
+                      to={item.href}
+                      onClick={() => setIsSidebarOpen(false)}
+                      className={`group flex items-center p-3 rounded-lg transition-colors ${
+                        isActive
+                          ? 'bg-blue-600/20 text-blue-400 border border-blue-600/30'
+                          : 'text-slate-400 hover:text-white border border-transparent'
+                      }`}
+                    >
+                      <item.icon
+                        className={`mr-3 flex-shrink-0 h-5 w-5`}
+                        aria-hidden="true"
+                      />
+                      <span className="font-medium">{item.name}</span>
+                    </Link>
+                  );
+                })}
+              </nav>
+              {/* User Section for Sidebar */}
+              <div className="p-6 bg-slate-900 mt-auto">
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-sm font-bold uppercase">{user.username.slice(0,2)}</div>
+                    <div>
+                      <p className="text-xs font-semibold">{user.username}</p>
+                      <p className="text-[10px] text-slate-500 capitalize">บทบาท: {user.role === 'admin' ? 'ผู้ดูแลระบบ' : 'ฝ่ายปฏิบัติการ'}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={logout}
+                    className="flex w-full items-center justify-center space-x-2 px-4 py-2 border border-slate-700 shadow-sm text-xs font-bold rounded-md text-slate-300 hover:bg-slate-800 transition-colors"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    <span>ออกจากระบบ</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Main content wrapper */}
+      <div className="flex flex-col flex-1 w-full h-screen overflow-hidden">
+        {/* Top Header - different based on login state */}
+        {!showSidebar ? (
+          // Public Top Header
+          <header className="h-16 bg-white border-b border-slate-200 px-6 sm:px-8 flex items-center justify-between shadow-sm z-10 w-full flex-shrink-0">
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-blue-600">CMRU Finance<span className="text-slate-800">Pro</span></h1>
+            </div>
+            {location.pathname !== '/login' && (
+              <Link
+                to="/login"
+                className="hidden sm:flex items-center space-x-2 px-4 py-2 border border-blue-200 shadow-sm text-sm font-bold rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors"
+              >
+                <LogIn className="h-4 w-4" />
+                <span>เข้าสู่ระบบพนักงาน</span>
+              </Link>
+            )}
+            {/* Mobile login button (icon only) */}
+            {location.pathname !== '/login' && (
+              <Link
+                to="/login"
+                className="flex sm:hidden items-center justify-center w-10 h-10 border border-blue-200 shadow-sm rounded-md text-blue-600 bg-blue-50"
+              >
+                <LogIn className="h-5 w-5" />
+              </Link>
+            )}
+          </header>
+        ) : (
+          // Internal Admin Top Header
+          <header className="h-16 bg-white border-b border-slate-200 px-8 flex items-center justify-between hidden md:flex flex-shrink-0">
+            <h2 className="text-lg font-semibold text-slate-800 flex items-center">
+              <span className="text-slate-400 mr-2 font-normal">ระบบบริหารจัดการงบประมาณ </span>
+            </h2>
+          </header>
+        )}
+
+        {/* Scrollable Main content area */}
+        <main className={`flex-1 overflow-y-auto focus:outline-none ${!showSidebar ? 'bg-[#f8fafc]' : ''}`}>
+          <div className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto">
+            <Outlet />
+          </div>
+        </main>
+      </div>
+
+      {/* Mobile backdrop */}
+      {isSidebarOpen && showSidebar && (
+        <div 
+          className="fixed inset-0 z-30 bg-slate-900 bg-opacity-75 transition-opacity md:hidden" 
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
