@@ -12,14 +12,19 @@ $session = requireAuth();
 $userId  = $session['user_id'];
 $body    = getBody();
 
-$image = $body['profile_image'] ?? null;
-
-if ($image === null) {
+$hasProfileImage = array_key_exists('profile_image', $body);
+if (!$hasProfileImage) {
     jsonError('profile_image is required');
 }
 
-// Allow clearing image with empty string or null-string
-if ($image === '' || $image === 'null') {
+$image = $body['profile_image'];
+
+if (!is_string($image) && $image !== null) {
+    jsonError('profile_image must be a string or null');
+}
+
+// Allow clearing image with null, empty string, or null-string
+if ($image === null || trim((string)$image) === '' || $image === 'null') {
     $image = null;
 }
 
