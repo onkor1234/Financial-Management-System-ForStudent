@@ -1,23 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { db, BudgetAddition } from '../lib/mockDb';
+import { api, BudgetAddition } from '../lib/api';
 import { format } from 'date-fns';
 import { Plus, Wallet } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
 
 export function Budget() {
-  const { user } = useAuth();
-  const [additions, setAdditions] = useState<BudgetAddition[]>([]);
+  const [additions, setAdditions]     = useState<BudgetAddition[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  
-  const [amount, setAmount] = useState(0);
+  const [amount, setAmount]           = useState(0);
   const [description, setDescription] = useState('');
+  const [loading, setLoading]         = useState(false);
 
-  useEffect(() => {
-    loadAdditions();
-  }, []);
+  useEffect(() => { loadAdditions(); }, []);
 
-  const loadAdditions = () => {
-    setAdditions([...db.budget_additions].reverse());
+  const loadAdditions = async () => {
+    try {
+      setAdditions(await api.budget.list());
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'โหลดข้อมูลล้มเหลว');
+    }
   };
 
   const handleOpenModal = () => {
@@ -28,27 +28,19 @@ export function Budget() {
 
   const handleCloseModal = () => setIsModalOpen(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
-    
-    if (amount <= 0) {
-      alert("Amount must be greater than 0");
-      return;
+    if (amount <= 0) { alert('จำนวนเงินต้องมากกว่า 0'); return; }
+    setLoading(true);
+    try {
+      await api.budget.create({ amount, description });
+      await loadAdditions();
+      handleCloseModal();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'บันทึกข้อมูลล้มเหลว');
+    } finally {
+      setLoading(false);
     }
-
-    const newId = db.budget_additions.length > 0 ? Math.max(...db.budget_additions.map(a => a.id)) + 1 : 1;
-    
-    db.budget_additions.push({
-      id: newId,
-      amount,
-      description,
-      created_by: user.id,
-      created_at: new Date().toISOString()
-    });
-
-    loadAdditions();
-    handleCloseModal();
   };
 
   const totalAdded = additions.reduce((sum, a) => sum + a.amount, 0);
@@ -57,10 +49,8 @@ export function Budget() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <h1 className="text-2xl font-bold text-slate-900 tracking-tight">รายการเติมงบประมาณเข้าระบบ</h1>
-        <button 
-          onClick={handleOpenModal} 
-          className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-bold text-white bg-green-600 shadow-green-200 hover:bg-green-700"
-        >
+        <button onClick={handleOpenModal}
+          className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-bold text-white bg-green-600 shadow-green-200 hover:bg-green-700">
           <Plus className="w-4 h-4 mr-2" /> เติมงบประมาณ
         </button>
       </div>
@@ -76,33 +66,33 @@ export function Budget() {
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-          <div className="px-6 py-4 border-b border-slate-200 font-bold text-slate-800">
-            ประวัติการทำรายการ
-          </div>
-          <div className="flex-1 overflow-auto">
-            <table className="w-full text-left">
-              <thead className="text-xs font-bold text-slate-500 uppercase bg-slate-50">
-                <tr>
-                  <th className="px-6 py-3 border-b border-slate-100">ลำดับ</th>
-                  <th className="px-6 py-3 border-b border-slate-100">รายละเอียด</th>
-                  <th className="px-6 py-3 border-b border-slate-100">จำนวนเงิน</th>
-                  <th className="px-6 py-3 border-b border-slate-100">วันที่เติม</th>
+        <div className="px-6 py-4 border-b border-slate-200 font-bold text-slate-800">ประวัติการทำรายการ</div>
+        <div className="flex-1 overflow-auto">
+          <table className="w-full text-left">
+            <thead className="text-xs font-bold text-slate-500 uppercase bg-slate-50">
+              <tr>
+                <th className="px-6 py-3 border-b border-slate-100">ลำดับ</th>
+                <th className="px-6 py-3 border-b border-slate-100">รายละเอียด</th>
+                <th className="px-6 py-3 border-b border-slate-100">จำนวนเงิน</th>
+                <th className="px-6 py-3 border-b border-slate-100">วันที่เติม</th>
+              </tr>
+            </thead>
+            <tbody className="text-sm divide-y divide-slate-100">
+              {additions.length === 0 ? (
+                <tr><td colSpan={4} className="px-6 py-4 text-center text-slate-500">ไม่พบประวัติการเติมงบประมาณ</td></tr>
+              ) : additions.map(addition => (
+                <tr key={addition.id} className="hover:bg-slate-50">
+                  <td className="px-6 py-4 whitespace-nowrap text-slate-900 font-medium">{addition.id}</td>
+                  <td className="px-6 py-4 text-slate-700">{addition.description}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-green-600 font-bold">+฿{addition.amount.toLocaleString()}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-slate-500">
+                    {format(new Date(addition.created_at), 'dd MMM yyyy HH:mm')}
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="text-sm divide-y divide-slate-100">
-                {additions.length === 0 ? (
-                  <tr><td colSpan={4} className="px-6 py-4 text-center text-slate-500">ไม่พบประวัติการเติมงบประมาณ</td></tr>
-                ) : additions.map(addition => (
-                  <tr key={addition.id} className="hover:bg-slate-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-slate-900 font-medium">{addition.id}</td>
-                    <td className="px-6 py-4 text-slate-700">{addition.description}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-green-600 font-bold">+฿{addition.amount.toLocaleString()}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-slate-500">{format(new Date(addition.created_at), 'dd MMM yyyy HH:mm')}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {isModalOpen && (
@@ -114,15 +104,21 @@ export function Budget() {
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
                   <label className="block text-sm font-bold text-slate-700">จำนวนเงิน (฿)</label>
-                  <input type="number" required min="1" value={amount || ''} onChange={e => setAmount(Number(e.target.value))} className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm focus:ring-green-500 focus:border-green-500 text-slate-800" />
+                  <input type="number" required min="1" value={amount || ''}
+                    onChange={e => setAmount(Number(e.target.value))}
+                    className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm focus:ring-green-500 focus:border-green-500 text-slate-800" />
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-slate-700">รายละเอียด</label>
-                  <input type="text" required value={description} onChange={e => setDescription(e.target.value)} className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm focus:ring-green-500 focus:border-green-500 text-slate-800" placeholder="เช่น เงินสนับสนุนจากคณะ" />
+                  <input type="text" required value={description} onChange={e => setDescription(e.target.value)}
+                    placeholder="เช่น เงินสนับสนุนจากคณะ"
+                    className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm focus:ring-green-500 focus:border-green-500 text-slate-800" />
                 </div>
                 <div className="mt-5 sm:mt-6 flex justify-end space-x-3">
                   <button type="button" onClick={handleCloseModal} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-md text-sm font-bold hover:bg-slate-200">ยกเลิก</button>
-                  <button type="submit" className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-bold text-white bg-green-600 shadow-green-200 hover:bg-green-700">เติมงบประมาณ</button>
+                  <button type="submit" disabled={loading} className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-bold text-white bg-green-600 shadow-green-200 hover:bg-green-700 disabled:opacity-60">
+                    {loading ? 'กำลังบันทึก...' : 'เติมงบประมาณ'}
+                  </button>
                 </div>
               </form>
             </div>

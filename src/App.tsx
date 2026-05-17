@@ -20,19 +20,33 @@ import { ManageUsers } from './pages/ManageUsers';
 
 // Protected Route Component
 function ProtectedRoute({ children, requiredRole }: { children: React.ReactNode, requiredRole?: 'admin' | 'operation' }) {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const location = useLocation();
-  
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-slate-50">
+        <div className="flex flex-col items-center gap-3 text-slate-400">
+          <svg className="animate-spin h-8 w-8" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+          </svg>
+          <span className="text-sm font-medium">กำลังตรวจสอบสิทธิ์...</span>
+        </div>
+      </div>
+    );
+  }
+
   if (!user) {
     return <Navigate to="/login" replace />;
   }
-  
+
   if (requiredRole && user.role !== 'admin' && user.role !== requiredRole) {
     return <Navigate to="/" replace />;
   }
 
-  if (user.allowedPages && !user.allowedPages.includes(location.pathname)) {
-    return <Navigate to="/" replace />; // redirect to dashboard or maybe "unauthorized" page, but dash is fine
+  if (user.allowed_pages && !user.allowed_pages.includes(location.pathname)) {
+    return <Navigate to="/" replace />;
   }
 
   return <>{children}</>;
@@ -44,7 +58,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Layout />}>
-            <Route index element={<Dashboard />} />
+            <Route index element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="login" element={<Login />} />
             <Route 
               path="sections" 

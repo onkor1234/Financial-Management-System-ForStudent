@@ -16,11 +16,20 @@ export default defineConfig(({mode}) => {
       },
     },
     server: {
+      port: 3000,
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
-      // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      proxy: {
+        // Forward /api/* requests to the PHP backend server.
+        // Set VITE_API_TARGET in .env.local to override.
+        //   php -S localhost:8080 -t .  →  http://localhost:8080  (default)
+        //   XAMPP / Apache on port 80  →  http://localhost
+        '/api': {
+          target: env.VITE_API_TARGET || 'http://localhost:8080',
+          changeOrigin: true,
+        },
+      },
     },
   };
 });

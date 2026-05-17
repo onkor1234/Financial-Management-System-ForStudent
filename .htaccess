@@ -1,0 +1,15 @@
+Options -Indexes
+
+RewriteEngine On
+
+# ให้ /api/* ผ่านไปหา PHP โดยตรง ไม่ต้อง rewrite
+RewriteCond %{REQUEST_URI} ^/api/
+RewriteRule ^ - [L]
+
+# ให้ไฟล์และโฟลเดอร์จริงผ่านได้ตามปกติ (CSS, JS, รูปภาพ ฯลฯ)
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# ทุก route อื่น ๆ ส่งไปที่ index.html (React SPA)
+RewriteRule ^ index.html [L]

@@ -1,38 +1,57 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
-import { User, db } from '../lib/mockDb';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { api, User } from '../lib/api';
 
 interface AuthContextType {
   user: User | null;
-  login: (username: string) => void;
-  logout: () => void;
+  loading: boolean;
+  login: (username: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  // Try to load user from localStorage for persistence
-  const [user, setUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem('unifin_user');
-    return saved ? JSON.parse(saved) : null;
-  });
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const login = (username: string) => {
-    const foundUser = db.users.find(u => u.username === username);
-    if (foundUser) {
-      setUser(foundUser);
-      localStorage.setItem('unifin_user', JSON.stringify(foundUser));
-    } else {
-      alert("User not found: try 'admin' or 'op1'");
+  // On mount: restore from localStorage, then verify session is still valid
+  useEffect(() => {
+    const saved = localStorage.getItem('unifin_user');
+    if (saved) {
+      try {
+        setUser(JSON.parse(saved));
+      } catch {
+        localStorage.removeItem('unifin_user');
+      }
     }
+
+    api.auth
+      .me()
+      .then((freshUser) => {
+        setUser(freshUser);
+        localStorage.setItem('unifin_user', JSON.stringify(freshUser));
+      })
+      .catch(() => {
+        setUser(null);
+        localStorage.removeItem('unifin_user');
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  const login = async (username: string, password: string): Promise<void> => {
+    const loggedIn = await api.auth.login(username, password);
+    setUser(loggedIn);
+    localStorage.setItem('unifin_user', JSON.stringify(loggedIn));
   };
 
-  const logout = () => {
+  const logout = async (): Promise<void> => {
+    await api.auth.logout().catch(() => {});
     setUser(null);
     localStorage.removeItem('unifin_user');
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );
