@@ -44,7 +44,9 @@ if ($id) {
     }
 }
 
-$isPaid        = isset($body['is_paid']) ? (bool)$body['is_paid'] : (bool)$payment['is_paid'];
+$hasIsPaidInput   = array_key_exists('is_paid', $body);
+$hasReceiptInput  = array_key_exists('receipt_image', $body);
+$isPaid           = $hasIsPaidInput ? (bool)$body['is_paid'] : (bool)$payment['is_paid'];
 $receiptImage  = array_key_exists('receipt_image', $body)
                     ? normalizeReceiptImage($body['receipt_image'])
                     : normalizeReceiptImage($payment['receipt_image']);
@@ -52,8 +54,8 @@ $paidAt = $isPaid
     ? ($payment['paid_at'] ?? date('Y-m-d H:i:s'))
     : null;
 
-// If receipt uploaded, mark as paid automatically
-if ($receiptImage && !$isPaid) {
+// If receipt is uploaded without explicit is_paid, auto-mark as paid
+if (!$hasIsPaidInput && $hasReceiptInput && $receiptImage) {
     $isPaid = true;
     $paidAt = date('Y-m-d H:i:s');
 }
