@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api, ExpenseRequest, ExpenseItem, formatMoney } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
-import { Plus, Check, X, Eye, Download, Trash2 } from 'lucide-react';
+import { Plus, Check, X, Eye, Download, Trash2, Pencil } from 'lucide-react';
 import { format } from 'date-fns';
 import * as XLSX from 'xlsx';
 
@@ -18,6 +18,9 @@ export function ExpenseRequests() {
 
   const [selectedReq, setSelectedReq]     = useState<ExpenseRequest | null>(null);
   const [selectedItems, setSelectedItems] = useState<ExpenseItem[]>([]);
+
+  const [editReq, setEditReq]             = useState<ExpenseRequest | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   useEffect(() => { loadRequests(); }, []);
 
@@ -84,6 +87,58 @@ export function ExpenseRequests() {
     }
   };
 
+  const openEdit = async (req: ExpenseRequest) => {
+    try {
+      const details = await api.expenseRequests.getDetails(req.id);
+      setEditReq(req);
+      setTitle(details.title);
+      setDescription(details.description ?? '');
+      setItems(details.items.map(i => ({ name: i.item_name, price: i.price })));
+      setIsEditModalOpen(true);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'โหลดรายละเอียดล้มเหลว');
+    }
+  };
+
+  const closeEditModal = () => {
+    setIsEditModalOpen(false);
+    setEditReq(null);
+    setTitle('');
+    setDescription('');
+    setItems([{ name: '', price: 0 }]);
+  };
+
+  const handleEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editReq) return;
+    const validItems = items.filter(i => i.name.trim() !== '' && i.price > 0);
+    if (validItems.length === 0) { alert('กรุณาเพิ่มรายการสิ่งของอย่างน้อย 1 รายการ'); return; }
+    setLoading(true);
+    try {
+      await api.expenseRequests.update(editReq.id, {
+        title,
+        description,
+        items: validItems.map(i => ({ name: i.name, price: i.price })),
+      });
+      await loadRequests();
+      closeEditModal();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'แก้ไขรายการล้มเหลว');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async (req: ExpenseRequest) => {
+    if (!confirm(`ยืนยันลบรายการ "${req.title}" ?`)) return;
+    try {
+      await api.expenseRequests.delete(req.id);
+      await loadRequests();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'ลบรายการล้มเหลว');
+    }
+  };
+
   const exportDetails = () => {
     if (!selectedReq) return;
     const ws = XLSX.utils.json_to_sheet(selectedItems.map(item => ({ ItemName: item.item_name, Price: item.price })));
@@ -134,10 +189,24 @@ export function ExpenseRequests() {
                   </td>
                   <td className="px-6 py-4 text-slate-500">{format(new Date(req.created_at), 'dd MMM yyyy')}</td>
                   <td className="px-6 py-4 text-right font-medium">
-                    <button onClick={() => openDetails(req)}
-                      className="text-slate-500 hover:text-slate-800 flex items-center justify-end w-full font-bold text-xs">
-                      <Eye className="w-4 h-4 mr-1" /> ดูรายละเอียด
-                    </button>
+                    <div className="flex items-center justify-end gap-2">
+                      {req.status === 'pending' && (user?.role === 'admin' || req.created_by === user?.id) && (
+                        <>
+                          <button onClick={() => openEdit(req)}
+                            className="text-blue-500 hover:text-blue-700 flex items-center font-bold text-xs">
+                            <Pencil className="w-4 h-4 mr-1" /> แก้ไข
+                          </button>
+                          <button onClick={() => handleDelete(req)}
+                            className="text-red-500 hover:text-red-700 flex items-center font-bold text-xs">
+                            <Trash2 className="w-4 h-4 mr-1" /> ลบ
+                          </button>
+                        </>
+                      )}
+                      <button onClick={() => openDetails(req)}
+                        className="text-slate-500 hover:text-slate-800 flex items-center font-bold text-xs">
+                        <Eye className="w-4 h-4 mr-1" /> ดูรายละเอียด
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -196,6 +265,64 @@ export function ExpenseRequests() {
                   <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-md text-sm font-bold hover:bg-slate-200">ยกเลิก</button>
                   <button type="submit" disabled={loading} className="px-4 py-2 border border-transparent rounded-md shadow-sm shadow-blue-200 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60">
                     {loading ? 'กำลังส่ง...' : 'ส่งคำขอเบิกเงิน'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {isEditModalOpen && editReq && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+            <div className="fixed inset-0 transition-opacity bg-slate-900 bg-opacity-75" onClick={closeEditModal} />
+            <div className="relative inline-block w-full max-w-2xl p-6 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-xl border border-slate-200">
+              <h3 className="text-lg font-bold text-slate-900 mb-4">แก้ไขรายการเบิกจ่าย</h3>
+              <form onSubmit={handleEdit} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700">ชื่อรายการ</label>
+                  <input type="text" required value={title} onChange={e => setTitle(e.target.value)}
+                    className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm focus:ring-blue-500 focus:border-blue-500 text-slate-800" />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700">รายละเอียดเพิ่มเติม</label>
+                  <textarea rows={3} value={description} onChange={e => setDescription(e.target.value)}
+                    className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm focus:ring-blue-500 focus:border-blue-500 text-slate-800" />
+                </div>
+                <div className="pt-4">
+                  <div className="flex justify-between items-center mb-2">
+                    <label className="block text-sm font-bold text-slate-700">รายการสิ่งของ</label>
+                    <button type="button" onClick={handleAddItem} className="text-blue-600 hover:text-blue-700 text-sm font-bold flex items-center">
+                      <Plus className="w-4 h-4 mr-1" /> เพิ่มรายการ
+                    </button>
+                  </div>
+                  <div className="space-y-2 border border-slate-200 rounded-md p-3 bg-slate-50 max-h-60 overflow-y-auto">
+                    {items.map((item, index) => (
+                      <div key={index} className="flex space-x-2 items-center">
+                        <input type="text" placeholder="ชื่อสิ่งของ/รายการ" required value={item.name}
+                          onChange={e => handleItemChange(index, 'name', e.target.value)}
+                          className="flex-1 px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm text-slate-800" />
+                        <input type="number" placeholder="ราคา (฿)" required min="0.01" step="0.01" value={item.price || ''}
+                          onChange={e => handleItemChange(index, 'price', parseFloat(e.target.value) || 0)}
+                          className="w-32 px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm text-slate-800" />
+                        <button type="button" onClick={() => handleRemoveItem(index)} className="p-1.5 text-slate-400 hover:text-red-500">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-2 text-right">
+                    <span className="text-sm font-bold text-slate-700">
+                      ยอดรวม: ฿{formatMoney(items.reduce((s, i) => s + (i.price || 0), 0))}
+                    </span>
+                  </div>
+                </div>
+                <div className="mt-6 flex justify-end space-x-3">
+                  <button type="button" onClick={closeEditModal} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-md text-sm font-bold hover:bg-slate-200">ยกเลิก</button>
+                  <button type="submit" disabled={loading} className="px-4 py-2 border border-transparent rounded-md shadow-sm shadow-blue-200 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60">
+                    {loading ? 'กำลังบันทึก...' : 'บันทึกการแก้ไข'}
                   </button>
                 </div>
               </form>

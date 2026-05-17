@@ -267,6 +267,15 @@ export const api = {
       items: { name: string; price: number }[];
     }) => request<ExpenseRequest>('POST', '/expense_requests.php', data),
 
+    update: (id: number, data: {
+      title: string;
+      description?: string;
+      items: { name: string; price: number }[];
+    }) => request<ExpenseRequest>('PUT', `/expense_requests.php?id=${id}`, data),
+
+    delete: (id: number) =>
+      request<{ success: boolean }>('DELETE', `/expense_requests.php?id=${id}`),
+
     updateStatus: (id: number, status: 'approved' | 'rejected') =>
       request<ExpenseRequest>('PATCH', `/expense_requests.php?id=${id}`, { status }),
   },

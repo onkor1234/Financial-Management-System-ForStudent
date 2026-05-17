@@ -89,6 +89,57 @@ switch ($method) {
         $stmt->execute([$reqId]);
         jsonResponse(formatExpense($stmt->fetch()), 201);
 
+    case 'PUT':
+        $id      = (int)($_GET['id'] ?? 0);
+        $body    = getBody();
+        $session = requireAuth();
+
+        if (!$id) jsonError('id จำเป็น');
+
+        $stmt = $pdo->prepare("SELECT * FROM `expense_requests` WHERE id = ?");
+        $stmt->execute([$id]);
+        $req = $stmt->fetch();
+        if (!$req) jsonError('Not found', 404);
+        if ($req['status'] !== 'pending') jsonError('ไม่สามารถแก้ไขรายการที่อนุมัติ/ปฏิเสธแล้ว');
+        if ($session['role'] !== 'admin' && (int)$req['created_by'] !== (int)$session['user_id']) {
+            jsonError('ไม่มีสิทธิ์แก้ไขรายการนี้', 403);
+        }
+
+        $title = trim($body['title']       ?? '');
+        $desc  = trim($body['description'] ?? '');
+        $items = $body['items']            ?? [];
+
+        if (!$title) jsonError('ชื่อรายการจำเป็นต้องกรอก');
+
+        $validItems = array_filter($items, fn($i) => trim($i['name'] ?? '') !== '' && (float)($i['price'] ?? 0) > 0);
+        if (empty($validItems)) jsonError('กรุณาเพิ่มรายการสิ่งของอย่างน้อย 1 รายการ');
+
+        $total = array_sum(array_column(array_values($validItems), 'price'));
+
+        $pdo->beginTransaction();
+        try {
+            $pdo->prepare(
+                "UPDATE `expense_requests` SET title=?, total_amount=?, description=? WHERE id=?"
+            )->execute([$title, $total, $desc ?: null, $id]);
+
+            $pdo->prepare("DELETE FROM `expense_items` WHERE expense_request_id = ?")->execute([$id]);
+
+            $itemStmt = $pdo->prepare(
+                "INSERT INTO `expense_items` (expense_request_id, item_name, price) VALUES (?, ?, ?)"
+            );
+            foreach ($validItems as $item) {
+                $itemStmt->execute([$id, trim($item['name']), (float)$item['price']]);
+            }
+            $pdo->commit();
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            jsonError('เกิดข้อผิดพลาด: ' . $e->getMessage(), 500);
+        }
+
+        $stmt = $pdo->prepare("SELECT * FROM `expense_requests` WHERE id = ?");
+        $stmt->execute([$id]);
+        jsonResponse(formatExpense($stmt->fetch()));
+
     case 'PATCH':
         $id      = (int)($_GET['id'] ?? 0);
         $body    = getBody();
@@ -106,6 +157,33 @@ switch ($method) {
         $stmt = $pdo->prepare("SELECT * FROM `expense_requests` WHERE id = ?");
         $stmt->execute([$id]);
         jsonResponse(formatExpense($stmt->fetch()));
+
+    case 'DELETE':
+        $id      = (int)($_GET['id'] ?? 0);
+        $session = requireAuth();
+
+        if (!$id) jsonError('id จำเป็น');
+
+        $stmt = $pdo->prepare("SELECT * FROM `expense_requests` WHERE id = ?");
+        $stmt->execute([$id]);
+        $req = $stmt->fetch();
+        if (!$req) jsonError('Not found', 404);
+        if ($req['status'] !== 'pending') jsonError('ไม่สามารถลบรายการที่อนุมัติ/ปฏิเสธแล้ว');
+        if ($session['role'] !== 'admin' && (int)$req['created_by'] !== (int)$session['user_id']) {
+            jsonError('ไม่มีสิทธิ์ลบรายการนี้', 403);
+        }
+
+        $pdo->beginTransaction();
+        try {
+            $pdo->prepare("DELETE FROM `expense_items` WHERE expense_request_id = ?")->execute([$id]);
+            $pdo->prepare("DELETE FROM `expense_requests` WHERE id = ?")->execute([$id]);
+            $pdo->commit();
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            jsonError('เกิดข้อผิดพลาด: ' . $e->getMessage(), 500);
+        }
+
+        jsonResponse(['success' => true]);
 
     default:
         jsonError('Method not allowed', 405);
