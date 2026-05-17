@@ -59,6 +59,15 @@ export interface PaymentRequestWithDetails extends PaymentRequest {
   student_payments: StudentPayment[];
 }
 
+export interface PublicStudentPaymentStatus {
+  student: Pick<Student, 'id' | 'student_id' | 'first_name' | 'last_name' | 'section'>;
+  payment: { is_paid: boolean } | null;
+}
+
+export interface PublicPaymentStatusDetails extends PaymentRequest {
+  student_payments: PublicStudentPaymentStatus[];
+}
+
 export interface ExpenseRequest {
   id: number;
   title: string;
@@ -263,5 +272,8 @@ export const api = {
 
   dashboard: {
     getData: () => request<DashboardData>('GET', '/dashboard.php'),
+
+    getPaymentStatus: (id: number) =>
+      request<PublicPaymentStatusDetails>('GET', `/payment_status.php?id=${id}`),
   },
 };

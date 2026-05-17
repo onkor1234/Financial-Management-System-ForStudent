@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api, DashboardData, PaymentRequest } from '../lib/api';
 import { format } from 'date-fns';
-import { CheckCircle, XCircle } from 'lucide-react';
+import { CheckCircle, XCircle, Banknote, ClipboardList, Clock, Users, TrendingUp, Receipt, PlusCircle } from 'lucide-react';
 
 export function Dashboard() {
   const emptyData: DashboardData = {
@@ -14,7 +14,7 @@ export function Dashboard() {
   const [data, setData]               = useState<DashboardData>(emptyData);
   const [selectedReq, setSelectedReq] = useState<PaymentRequest | null>(null);
   const [detailFilterSection, setDetailFilterSection] = useState('');
-  const [detailData, setDetailData]   = useState<{ student: { id: number; student_id: string; first_name: string; last_name: string; section: string }; payment: { is_paid: boolean; receipt_image: string | null } | null }[]>([]);
+  const [detailData, setDetailData]   = useState<{ student: { id: number; student_id: string; first_name: string; last_name: string; section: string }; payment: { is_paid: boolean } | null }[]>([]);
 
   useEffect(() => { loadData(); }, []);
 
@@ -30,10 +30,10 @@ export function Dashboard() {
     setSelectedReq(req);
     setDetailFilterSection('');
     try {
-      const details = await api.paymentRequests.getDetails(req.id);
+      const details = await api.dashboard.getPaymentStatus(req.id);
       setDetailData(details.student_payments.map(sp => ({
         student: sp.student,
-        payment: sp.payment ? { is_paid: sp.payment.is_paid, receipt_image: sp.payment.receipt_image } : null,
+        payment: sp.payment ? { is_paid: sp.payment.is_paid } : null,
       })));
     } catch {
       setDetailData([]);
@@ -50,29 +50,83 @@ export function Dashboard() {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-          <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">งบประมาณคงเหลือ</p>
-          <p className="text-2xl font-bold mt-1 text-slate-900">฿{data.totalBudget.toLocaleString()}</p>
+        {/* งบประมาณคงเหลือ */}
+        <div className="relative bg-gradient-to-br from-emerald-500 to-emerald-600 p-5 rounded-2xl shadow-lg overflow-hidden">
+          <div className="absolute -right-4 -top-4 w-24 h-24 bg-white/10 rounded-full" />
+          <div className="absolute -right-2 -bottom-6 w-32 h-32 bg-white/10 rounded-full" />
+          <div className="relative">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs text-emerald-100 font-semibold uppercase tracking-wider">งบประมาณคงเหลือ</p>
+              <div className="bg-white/20 p-2 rounded-lg">
+                <Banknote className="w-5 h-5 text-white" />
+              </div>
+            </div>
+            <p className="text-3xl font-bold text-white">฿{data.totalBudget.toLocaleString()}</p>
+            <p className="text-xs text-emerald-100 mt-2 flex items-center gap-1">
+              <TrendingUp className="w-3 h-3" /> งบประมาณปัจจุบัน
+            </p>
+          </div>
         </div>
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-          <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">รายการเก็บเงินที่ค้าง</p>
-          <p className="text-2xl font-bold mt-1 text-slate-900">{data.unpaidCount} รายการ</p>
+
+        {/* รายการเก็บเงินที่ค้าง */}
+        <div className="relative bg-gradient-to-br from-rose-500 to-rose-600 p-5 rounded-2xl shadow-lg overflow-hidden">
+          <div className="absolute -right-4 -top-4 w-24 h-24 bg-white/10 rounded-full" />
+          <div className="absolute -right-2 -bottom-6 w-32 h-32 bg-white/10 rounded-full" />
+          <div className="relative">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs text-rose-100 font-semibold uppercase tracking-wider">รายการเก็บเงินค้าง</p>
+              <div className="bg-white/20 p-2 rounded-lg">
+                <ClipboardList className="w-5 h-5 text-white" />
+              </div>
+            </div>
+            <p className="text-3xl font-bold text-white">{data.unpaidCount.toLocaleString()}</p>
+            <p className="text-xs text-rose-100 mt-2">รายการที่ยังไม่ได้ชำระ</p>
+          </div>
         </div>
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-          <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">รออนุมัติเบิกเงิน</p>
-          <p className="text-2xl font-bold mt-1 text-amber-600">฿{data.pendingExpenseTotal.toLocaleString()}</p>
-          <p className="text-xs text-slate-400 mt-2">{data.pendingExpenseCount} รายการรอ อนุมัติ</p>
+
+        {/* รออนุมัติเบิกเงิน */}
+        <div className="relative bg-gradient-to-br from-amber-400 to-amber-500 p-5 rounded-2xl shadow-lg overflow-hidden">
+          <div className="absolute -right-4 -top-4 w-24 h-24 bg-white/10 rounded-full" />
+          <div className="absolute -right-2 -bottom-6 w-32 h-32 bg-white/10 rounded-full" />
+          <div className="relative">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs text-amber-900/70 font-semibold uppercase tracking-wider">รออนุมัติเบิกเงิน</p>
+              <div className="bg-white/20 p-2 rounded-lg">
+                <Receipt className="w-5 h-5 text-white" />
+              </div>
+            </div>
+            <p className="text-3xl font-bold text-white">฿{data.pendingExpenseTotal.toLocaleString()}</p>
+            <p className="text-xs text-amber-900/60 mt-2 flex items-center gap-1">
+              <Clock className="w-3 h-3" /> {data.pendingExpenseCount} รายการรออนุมัติ
+            </p>
+          </div>
         </div>
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-          <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">นักศึกษาทั้งหมด</p>
-          <p className="text-2xl font-bold mt-1 text-slate-900">{data.studentCount.toLocaleString()} คน</p>
-          <p className="text-xs text-slate-400 mt-2">แบ่งตาม {data.sectionCount} Sections</p>
+
+        {/* นักศึกษาทั้งหมด */}
+        <div className="relative bg-gradient-to-br from-blue-500 to-blue-600 p-5 rounded-2xl shadow-lg overflow-hidden">
+          <div className="absolute -right-4 -top-4 w-24 h-24 bg-white/10 rounded-full" />
+          <div className="absolute -right-2 -bottom-6 w-32 h-32 bg-white/10 rounded-full" />
+          <div className="relative">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs text-blue-100 font-semibold uppercase tracking-wider">นักศึกษาทั้งหมด</p>
+              <div className="bg-white/20 p-2 rounded-lg">
+                <Users className="w-5 h-5 text-white" />
+              </div>
+            </div>
+            <p className="text-3xl font-bold text-white">{data.studentCount.toLocaleString()} <span className="text-xl font-semibold">คน</span></p>
+            <p className="text-xs text-blue-100 mt-2 flex items-center gap-1">
+              <PlusCircle className="w-3 h-3" /> แบ่งเป็น {data.sectionCount} กลุ่มเรียน
+            </p>
+          </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
-          <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+          <div className="p-5 border-b border-slate-100 flex items-center gap-3 bg-slate-50/50">
+            <div className="bg-rose-100 p-2 rounded-lg">
+              <ClipboardList className="w-4 h-4 text-rose-600" />
+            </div>
             <h3 className="font-bold text-slate-700">รายการเรียกเก็บเงินที่เปิดอยู่</h3>
           </div>
           <div className="flex-1 overflow-auto">
@@ -99,8 +153,11 @@ export function Dashboard() {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
-          <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+          <div className="p-5 border-b border-slate-100 flex items-center gap-3 bg-slate-50/50">
+            <div className="bg-amber-100 p-2 rounded-lg">
+              <Receipt className="w-4 h-4 text-amber-600" />
+            </div>
             <h3 className="font-bold text-slate-700">รายการเบิกจ่ายล่าสุด</h3>
           </div>
           <div className="flex-1 overflow-auto">
@@ -136,8 +193,11 @@ export function Dashboard() {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
-        <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+        <div className="p-5 border-b border-slate-100 flex items-center gap-3 bg-slate-50/50">
+          <div className="bg-emerald-100 p-2 rounded-lg">
+            <Banknote className="w-4 h-4 text-emerald-600" />
+          </div>
           <h3 className="font-bold text-slate-700">รายการเติมงบประมาณล่าสุด</h3>
         </div>
         <div className="flex-1 overflow-auto">
