@@ -41,7 +41,7 @@ $listSql = "SELECT s.*, sec.name AS section, maj.name AS major
             FROM `students` s
             LEFT JOIN `sections` sec ON s.section_id = sec.id
             LEFT JOIN `majors`   maj ON s.major_id   = maj.id
-            ORDER BY s.id";
+            ORDER BY CAST(s.student_id AS UNSIGNED), s.student_id, s.id";
 
 switch ($method) {
     case 'GET':

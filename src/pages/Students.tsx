@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { api, Student, Section, Major } from '../lib/api';
 import { Plus, Download } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -85,14 +85,58 @@ export function Students() {
     }
   };
 
-  const filteredStudents = students.filter(s => {
-    const matchSection = filterSection === '' || s.section === filterSection;
-    const matchMajor   = filterMajor   === '' || s.major   === filterMajor;
-    return matchSection && matchMajor;
-  });
+  const filteredStudents = useMemo(() => {
+    return students.filter(s => {
+      const matchSection = filterSection === '' || s.section === filterSection;
+      const matchMajor = filterMajor === '' || s.major === filterMajor;
+      return matchSection && matchMajor;
+    });
+  }, [students, filterSection, filterMajor]);
+
+  const groupedStudents = useMemo(() => {
+    const compareStudentId = (a: Student, b: Student) =>
+      a.student_id.localeCompare(b.student_id, 'th', { numeric: true, sensitivity: 'base' });
+
+    const majorMap = new Map<string, Map<string, Student[]>>();
+
+    for (const student of filteredStudents) {
+      const majorName = student.major || 'ไม่ระบุสาขาวิชา';
+      const sectionName = student.section || 'ไม่ระบุกลุ่มเรียน';
+
+      if (!majorMap.has(majorName)) {
+        majorMap.set(majorName, new Map<string, Student[]>());
+      }
+      const sectionMap = majorMap.get(majorName)!;
+
+      if (!sectionMap.has(sectionName)) {
+        sectionMap.set(sectionName, []);
+      }
+      sectionMap.get(sectionName)!.push(student);
+    }
+
+    return Array.from(majorMap.entries())
+      .sort(([majorA], [majorB]) => majorA.localeCompare(majorB, 'th', { sensitivity: 'base' }))
+      .map(([major, sectionMap]) => {
+        const sectionGroups = Array.from(sectionMap.entries())
+          .sort(([sectionA], [sectionB]) => sectionA.localeCompare(sectionB, 'th', { numeric: true, sensitivity: 'base' }))
+          .map(([section, sectionStudents]) => ({
+            section,
+            students: [...sectionStudents].sort(compareStudentId),
+          }));
+
+        const count = sectionGroups.reduce((sum, group) => sum + group.students.length, 0);
+        return { major, sectionGroups, count };
+      });
+  }, [filteredStudents]);
+
+  const exportRows = useMemo(() => {
+    return groupedStudents.flatMap(group =>
+      group.sectionGroups.flatMap(sectionGroup => sectionGroup.students)
+    );
+  }, [groupedStudents]);
 
   const handleExport = () => {
-    const ws = XLSX.utils.json_to_sheet(filteredStudents.map(s => ({
+    const ws = XLSX.utils.json_to_sheet(exportRows.map(s => ({
       รหัสนักศึกษา: s.student_id,
       ชื่อ: s.first_name,
       นามสกุล: s.last_name,
@@ -153,17 +197,36 @@ export function Students() {
             <tbody className="text-sm divide-y divide-slate-100">
               {filteredStudents.length === 0 ? (
                 <tr><td colSpan={5} className="px-6 py-4 text-center text-slate-500">ไม่พบข้อมูลนักศึกษา</td></tr>
-              ) : filteredStudents.map(student => (
-                <tr key={student.id} className="hover:bg-slate-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-slate-900 font-medium">{student.student_id}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-slate-700">{student.first_name} {student.last_name}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-slate-600">{student.section}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-slate-600">{student.major}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right font-medium">
-                    <button onClick={() => handleOpenModal(student)} className="text-blue-600 hover:text-blue-800 font-bold text-xs mr-3">แก้ไข</button>
-                    <button onClick={() => handleDelete(student.id)} className="text-slate-400 hover:text-slate-600 font-bold text-xs">ลบ</button>
-                  </td>
-                </tr>
+              ) : groupedStudents.map(group => (
+                <React.Fragment key={`major-${group.major}`}>
+                  <tr className="bg-slate-100/80">
+                    <td colSpan={5} className="px-6 py-3 text-sm font-bold text-slate-800">
+                      สาขาวิชา: {group.major}
+                      <span className="ml-2 text-xs font-semibold text-slate-500">({group.count} คน)</span>
+                    </td>
+                  </tr>
+                  {group.sectionGroups.map(sectionGroup => (
+                    <React.Fragment key={`section-${group.major}-${sectionGroup.section}`}>
+                      <tr className="bg-slate-50">
+                        <td colSpan={5} className="px-6 py-2 text-xs font-bold uppercase tracking-wide text-slate-600">
+                          กลุ่มเรียน: {sectionGroup.section} ({sectionGroup.students.length} คน)
+                        </td>
+                      </tr>
+                      {sectionGroup.students.map(student => (
+                        <tr key={student.id} className="hover:bg-slate-50">
+                          <td className="px-6 py-4 whitespace-nowrap text-slate-900 font-medium">{student.student_id}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-slate-700">{student.first_name} {student.last_name}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-slate-600">{student.section}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-slate-600">{student.major}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-right font-medium">
+                            <button onClick={() => handleOpenModal(student)} className="text-blue-600 hover:text-blue-800 font-bold text-xs mr-3">แก้ไข</button>
+                            <button onClick={() => handleDelete(student.id)} className="text-slate-400 hover:text-slate-600 font-bold text-xs">ลบ</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </React.Fragment>
+                  ))}
+                </React.Fragment>
               ))}
             </tbody>
           </table>
