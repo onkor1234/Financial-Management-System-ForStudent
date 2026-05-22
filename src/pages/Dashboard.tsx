@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { api, DashboardData, PaymentRequest, formatMoney } from '../lib/api';
 import { format } from 'date-fns';
 import { CheckCircle, XCircle, Banknote, ClipboardList, Clock, Users, TrendingUp, Receipt, PlusCircle } from 'lucide-react';
@@ -14,6 +14,8 @@ export function Dashboard() {
   const [data, setData]               = useState<DashboardData>(emptyData);
   const [selectedReq, setSelectedReq] = useState<PaymentRequest | null>(null);
   const [detailFilterSection, setDetailFilterSection] = useState('');
+  const [detailSearch, setDetailSearch] = useState('');
+  const [detailStatusFilter, setDetailStatusFilter] = useState<'all' | 'paid' | 'unpaid'>('all');
   const [detailData, setDetailData]   = useState<{ student: { id: number; student_id: string; first_name: string; last_name: string; section: string }; payment: { is_paid: boolean } | null }[]>([]);
 
   useEffect(() => { loadData(); }, []);
@@ -29,6 +31,8 @@ export function Dashboard() {
   const openModal = async (req: PaymentRequest) => {
     setSelectedReq(req);
     setDetailFilterSection('');
+    setDetailSearch('');
+    setDetailStatusFilter('all');
     try {
       const details = await api.dashboard.getPaymentStatus(req.id);
       setDetailData(details.student_payments.map(sp => ({
@@ -40,11 +44,25 @@ export function Dashboard() {
     }
   };
 
-  const closeModal = () => { setSelectedReq(null); setDetailData([]); };
+  const closeModal = () => {
+    setSelectedReq(null);
+    setDetailData([]);
+    setDetailSearch('');
+    setDetailStatusFilter('all');
+    setDetailFilterSection('');
+  };
 
-  const filteredDetail = detailFilterSection
-    ? detailData.filter(d => d.student.section === detailFilterSection)
-    : detailData;
+  const normalizedDetailSearch = detailSearch.trim().toLowerCase();
+  const filteredDetail = detailData.filter(d => {
+    const matchSection = detailFilterSection === '' || d.student.section === detailFilterSection;
+    const isPaid = Boolean(d.payment?.is_paid);
+    const matchStatus =
+      detailStatusFilter === 'all' ||
+      (detailStatusFilter === 'paid' ? isPaid : !isPaid);
+    const searchText = `${d.student.student_id} ${d.student.first_name} ${d.student.last_name}`.toLowerCase();
+    const matchSearch = !normalizedDetailSearch || searchText.includes(normalizedDetailSearch);
+    return matchSection && matchStatus && matchSearch;
+  });
   const uniqueDetailSections = Array.from(new Set(detailData.map(d => d.student.section)));
 
   return (
@@ -238,17 +256,42 @@ export function Dashboard() {
               </div>
 
               <div className="mt-6">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3">
+                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3 mb-3">
                   <h4 className="text-sm font-bold text-slate-700">สถานะการชำระเงินของนักศึกษา</h4>
-                  {uniqueDetailSections.length > 1 && (
-                    <select value={detailFilterSection} onChange={e => setDetailFilterSection(e.target.value)}
-                      className="mt-2 sm:mt-0 px-3 py-1.5 border border-slate-200 rounded text-sm bg-white text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none">
-                      <option value="">ทุกกลุ่มเรียน</option>
-                      {uniqueDetailSections.map(s => <option key={s} value={s}>{s}</option>)}
+                  <div className="w-full lg:w-auto flex flex-col sm:flex-row gap-2">
+                    <div className="w-full sm:w-64">
+                      <input
+                        type="text"
+                        value={detailSearch}
+                        onChange={e => setDetailSearch(e.target.value)}
+                        placeholder="ค้นหารหัสนักศึกษา/ชื่อ"
+                        className="w-full px-3 py-1.5 border border-slate-200 rounded text-sm bg-white text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                    <select
+                      value={detailStatusFilter}
+                      onChange={e => setDetailStatusFilter(e.target.value as 'all' | 'paid' | 'unpaid')}
+                      className="px-3 py-1.5 border border-slate-200 rounded text-sm bg-white text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none"
+                    >
+                      <option value="all">ทุกสถานะ</option>
+                      <option value="paid">จ่ายแล้ว</option>
+                      <option value="unpaid">ยังไม่จ่าย</option>
                     </select>
-                  )}
+                    {uniqueDetailSections.length > 1 && (
+                      <select value={detailFilterSection} onChange={e => setDetailFilterSection(e.target.value)}
+                        className="px-3 py-1.5 border border-slate-200 rounded text-sm bg-white text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none">
+                        <option value="">ทุกกลุ่มเรียน</option>
+                        {uniqueDetailSections.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    )}
+                  </div>
                 </div>
                 <div className="max-h-64 overflow-y-auto space-y-4">
+                  {filteredDetail.length === 0 && (
+                    <div className="border border-dashed border-slate-300 rounded-lg px-4 py-6 text-center text-sm text-slate-500 bg-slate-50">
+                      ไม่พบข้อมูลตามเงื่อนไขที่เลือก
+                    </div>
+                  )}
                   {(detailFilterSection ? [detailFilterSection] : uniqueDetailSections).map(section => {
                     const sectionData = filteredDetail.filter(d => d.student.section === section);
                     if (sectionData.length === 0) return null;
