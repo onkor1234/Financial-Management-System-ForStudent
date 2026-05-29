@@ -101,8 +101,10 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS `expense_items` (
     `expense_request_id`  INT           NOT NULL,
     `item_name`           VARCHAR(255)  NOT NULL,
     `price`               DECIMAL(12,2) NOT NULL,
+    `quantity`            INT           NOT NULL DEFAULT 1,
     FOREIGN KEY (`expense_request_id`) REFERENCES `expense_requests`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+try { $pdo->exec("ALTER TABLE `expense_items` ADD COLUMN `quantity` INT NOT NULL DEFAULT 1"); } catch (Exception $e) {}
 
 $pdo->exec("CREATE TABLE IF NOT EXISTS `budget_additions` (
     `id`          INT AUTO_INCREMENT PRIMARY KEY,

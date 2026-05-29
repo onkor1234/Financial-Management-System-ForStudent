@@ -14,7 +14,7 @@ export function ExpenseRequests() {
 
   const [title, setTitle]               = useState('');
   const [description, setDescription]   = useState('');
-  const [items, setItems]               = useState<{ name: string; price: number }[]>([{ name: '', price: 0 }]);
+  const [items, setItems]               = useState<{ name: string; price: number; quantity: number }[]>([{ name: '', price: 0, quantity: 1 }]);
 
   const [selectedReq, setSelectedReq]     = useState<ExpenseRequest | null>(null);
   const [selectedItems, setSelectedItems] = useState<ExpenseItem[]>([]);
@@ -32,12 +32,13 @@ export function ExpenseRequests() {
     }
   };
 
-  const handleAddItem    = () => setItems([...items, { name: '', price: 0 }]);
+  const handleAddItem    = () => setItems([...items, { name: '', price: 0, quantity: 1 }]);
   const handleRemoveItem = (i: number) => setItems(items.filter((_, idx) => idx !== i));
-  const handleItemChange = (i: number, field: 'name' | 'price', value: string | number) => {
+  const handleItemChange = (i: number, field: 'name' | 'price' | 'quantity', value: string | number) => {
     const next = [...items];
-    if (field === 'name')  next[i].name  = value as string;
-    else                   next[i].price = value as number;
+    if (field === 'name')          next[i].name     = value as string;
+    else if (field === 'price')    next[i].price    = value as number;
+    else                           next[i].quantity = value as number;
     setItems(next);
   };
 
@@ -51,13 +52,13 @@ export function ExpenseRequests() {
       await api.expenseRequests.create({
         title,
         description,
-        items: validItems.map(i => ({ name: i.name, price: i.price })),
+        items: validItems.map(i => ({ name: i.name, price: i.price, quantity: i.quantity || 1 })),
       });
       await loadRequests();
       setIsModalOpen(false);
       setTitle('');
       setDescription('');
-      setItems([{ name: '', price: 0 }]);
+      setItems([{ name: '', price: 0, quantity: 1 }]);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'สร้างรายการล้มเหลว');
     } finally {
@@ -93,7 +94,7 @@ export function ExpenseRequests() {
       setEditReq(req);
       setTitle(details.title);
       setDescription(details.description ?? '');
-      setItems(details.items.map(i => ({ name: i.item_name, price: i.price })));
+      setItems(details.items.map(i => ({ name: i.item_name, price: i.price, quantity: i.quantity ?? 1 })));
       setIsEditModalOpen(true);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'โหลดรายละเอียดล้มเหลว');
@@ -105,7 +106,7 @@ export function ExpenseRequests() {
     setEditReq(null);
     setTitle('');
     setDescription('');
-    setItems([{ name: '', price: 0 }]);
+    setItems([{ name: '', price: 0, quantity: 1 }]);
   };
 
   const handleEdit = async (e: React.FormEvent) => {
@@ -118,7 +119,7 @@ export function ExpenseRequests() {
       await api.expenseRequests.update(editReq.id, {
         title,
         description,
-        items: validItems.map(i => ({ name: i.name, price: i.price })),
+        items: validItems.map(i => ({ name: i.name, price: i.price, quantity: i.quantity || 1 })),
       });
       await loadRequests();
       closeEditModal();
@@ -141,7 +142,12 @@ export function ExpenseRequests() {
 
   const exportDetails = () => {
     if (!selectedReq) return;
-    const ws = XLSX.utils.json_to_sheet(selectedItems.map(item => ({ ItemName: item.item_name, Price: item.price })));
+    const ws = XLSX.utils.json_to_sheet(selectedItems.map(item => ({
+      รายการ: item.item_name,
+      ราคาต่อหน่วย: item.price,
+      จำนวน: item.quantity ?? 1,
+      รวม: item.price * (item.quantity ?? 1),
+    })));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'ExpenseItems');
     XLSX.writeFile(wb, `${selectedReq.title}_expense.xlsx`);
@@ -151,7 +157,7 @@ export function ExpenseRequests() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h1 className="text-2xl font-bold text-slate-900 tracking-tight">รายการเบิกจ่าย</h1>
-        {user?.role === 'operation' && (
+        {(user?.role === 'operation' || user?.role === 'admin') && (
           <button onClick={() => setIsModalOpen(true)}
             className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm shadow-blue-200 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700">
             <Plus className="w-4 h-4 mr-2" /> สร้างรายการใหม่
@@ -240,15 +246,28 @@ export function ExpenseRequests() {
                       <Plus className="w-4 h-4 mr-1" /> เพิ่มรายการ
                     </button>
                   </div>
-                  <div className="space-y-2 border border-slate-200 rounded-md p-3 bg-slate-50 max-h-60 overflow-y-auto">
+                  <div className="space-y-2 border border-slate-200 rounded-md p-3 bg-slate-50 max-h-64 overflow-y-auto">
+                    <div className="flex space-x-2 items-center text-[10px] font-bold text-slate-500 uppercase px-1">
+                      <span className="flex-1">รายการ</span>
+                      <span className="w-24 text-center">ราคา/หน่วย (฿)</span>
+                      <span className="w-16 text-center">จำนวน</span>
+                      <span className="w-24 text-right">รวม (฿)</span>
+                      <span className="w-6" />
+                    </div>
                     {items.map((item, index) => (
                       <div key={index} className="flex space-x-2 items-center">
                         <input type="text" placeholder="ชื่อสิ่งของ/รายการ" required value={item.name}
                           onChange={e => handleItemChange(index, 'name', e.target.value)}
                           className="flex-1 px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm text-slate-800" />
-                        <input type="number" placeholder="ราคา (฿)" required min="0.01" step="0.01" value={item.price || ''}
+                        <input type="number" placeholder="ราคา" required min="0.01" step="0.01" value={item.price || ''}
                           onChange={e => handleItemChange(index, 'price', parseFloat(e.target.value) || 0)}
-                          className="w-32 px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm text-slate-800" />
+                          className="w-24 px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm text-slate-800" />
+                        <input type="number" placeholder="จำนวน" required min="1" step="1" value={item.quantity || 1}
+                          onChange={e => handleItemChange(index, 'quantity', parseInt(e.target.value) || 1)}
+                          className="w-16 px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm text-slate-800 text-center" />
+                        <span className="w-24 text-right text-sm font-semibold text-blue-700">
+                          ฿{formatMoney((item.price || 0) * (item.quantity || 1))}
+                        </span>
                         <button type="button" onClick={() => handleRemoveItem(index)} className="p-1.5 text-slate-400 hover:text-red-500">
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -257,7 +276,7 @@ export function ExpenseRequests() {
                   </div>
                   <div className="mt-2 text-right">
                     <span className="text-sm font-bold text-slate-700">
-                      ยอดรวม: ฿{formatMoney(items.reduce((s, i) => s + (i.price || 0), 0))}
+                      ยอดรวม: ฿{formatMoney(items.reduce((s, i) => s + (i.price || 0) * (i.quantity || 1), 0))}
                     </span>
                   </div>
                 </div>
@@ -298,15 +317,28 @@ export function ExpenseRequests() {
                       <Plus className="w-4 h-4 mr-1" /> เพิ่มรายการ
                     </button>
                   </div>
-                  <div className="space-y-2 border border-slate-200 rounded-md p-3 bg-slate-50 max-h-60 overflow-y-auto">
+                  <div className="space-y-2 border border-slate-200 rounded-md p-3 bg-slate-50 max-h-64 overflow-y-auto">
+                    <div className="flex space-x-2 items-center text-[10px] font-bold text-slate-500 uppercase px-1">
+                      <span className="flex-1">รายการ</span>
+                      <span className="w-24 text-center">ราคา/หน่วย (฿)</span>
+                      <span className="w-16 text-center">จำนวน</span>
+                      <span className="w-24 text-right">รวม (฿)</span>
+                      <span className="w-6" />
+                    </div>
                     {items.map((item, index) => (
                       <div key={index} className="flex space-x-2 items-center">
                         <input type="text" placeholder="ชื่อสิ่งของ/รายการ" required value={item.name}
                           onChange={e => handleItemChange(index, 'name', e.target.value)}
                           className="flex-1 px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm text-slate-800" />
-                        <input type="number" placeholder="ราคา (฿)" required min="0.01" step="0.01" value={item.price || ''}
+                        <input type="number" placeholder="ราคา" required min="0.01" step="0.01" value={item.price || ''}
                           onChange={e => handleItemChange(index, 'price', parseFloat(e.target.value) || 0)}
-                          className="w-32 px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm text-slate-800" />
+                          className="w-24 px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm text-slate-800" />
+                        <input type="number" placeholder="จำนวน" required min="1" step="1" value={item.quantity || 1}
+                          onChange={e => handleItemChange(index, 'quantity', parseInt(e.target.value) || 1)}
+                          className="w-16 px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm text-slate-800 text-center" />
+                        <span className="w-24 text-right text-sm font-semibold text-blue-700">
+                          ฿{formatMoney((item.price || 0) * (item.quantity || 1))}
+                        </span>
                         <button type="button" onClick={() => handleRemoveItem(index)} className="p-1.5 text-slate-400 hover:text-red-500">
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -315,7 +347,7 @@ export function ExpenseRequests() {
                   </div>
                   <div className="mt-2 text-right">
                     <span className="text-sm font-bold text-slate-700">
-                      ยอดรวม: ฿{formatMoney(items.reduce((s, i) => s + (i.price || 0), 0))}
+                      ยอดรวม: ฿{formatMoney(items.reduce((s, i) => s + (i.price || 0) * (i.quantity || 1), 0))}
                     </span>
                   </div>
                 </div>
@@ -371,20 +403,24 @@ export function ExpenseRequests() {
                     <thead className="bg-slate-50 sticky top-0">
                       <tr>
                         <th className="px-4 py-2 text-left text-xs font-bold text-slate-500 uppercase">รายการ</th>
-                        <th className="px-4 py-2 text-right text-xs font-bold text-slate-500 uppercase">จำนวนเงิน (฿)</th>
+                        <th className="px-4 py-2 text-right text-xs font-bold text-slate-500 uppercase">ราคา/หน่วย (฿)</th>
+                        <th className="px-4 py-2 text-center text-xs font-bold text-slate-500 uppercase">จำนวน</th>
+                        <th className="px-4 py-2 text-right text-xs font-bold text-slate-500 uppercase">รวม (฿)</th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-slate-100">
                       {selectedItems.map(item => (
                         <tr key={item.id} className="hover:bg-slate-50">
-                          <td className="px-4 py-2 whitespace-nowrap text-slate-800">{item.item_name}</td>
-                          <td className="px-4 py-2 whitespace-nowrap text-slate-800 text-right">{formatMoney(item.price)}</td>
+                          <td className="px-4 py-2 text-slate-800">{item.item_name}</td>
+                          <td className="px-4 py-2 text-slate-800 text-right">{formatMoney(item.price)}</td>
+                          <td className="px-4 py-2 text-slate-800 text-center">{item.quantity ?? 1}</td>
+                          <td className="px-4 py-2 text-blue-700 font-semibold text-right">{formatMoney(item.price * (item.quantity ?? 1))}</td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot className="bg-slate-50 font-bold">
                       <tr>
-                        <td className="px-4 py-3 text-right">ยอดรวม:</td>
+                        <td colSpan={3} className="px-4 py-3 text-right">ยอดรวม:</td>
                         <td className="px-4 py-3 text-right text-blue-600 font-bold">฿{formatMoney(selectedReq.total_amount)}</td>
                       </tr>
                     </tfoot>

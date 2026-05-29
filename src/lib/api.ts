@@ -89,6 +89,7 @@ export interface ExpenseItem {
   expense_request_id: number;
   item_name: string;
   price: number;
+  quantity: number;
 }
 
 export interface ExpenseRequestWithItems extends ExpenseRequest {
@@ -264,13 +265,13 @@ export const api = {
     create: (data: {
       title: string;
       description?: string;
-      items: { name: string; price: number }[];
+      items: { name: string; price: number; quantity: number }[];
     }) => request<ExpenseRequest>('POST', '/expense_requests.php', data),
 
     update: (id: number, data: {
       title: string;
       description?: string;
-      items: { name: string; price: number }[];
+      items: { name: string; price: number; quantity: number }[];
     }) => request<ExpenseRequest>('PUT', `/expense_requests.php?id=${id}`, data),
 
     delete: (id: number) =>

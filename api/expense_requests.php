@@ -26,6 +26,7 @@ function formatItem(array $r): array
         'expense_request_id' => (int)$r['expense_request_id'],
         'item_name'          => $r['item_name'],
         'price'              => (float)$r['price'],
+        'quantity'           => (int)($r['quantity'] ?? 1),
     ];
 }
 
@@ -63,7 +64,7 @@ switch ($method) {
         $validItems = array_filter($items, fn($i) => trim($i['name'] ?? '') !== '' && (float)($i['price'] ?? 0) > 0);
         if (empty($validItems)) jsonError('กรุณาเพิ่มรายการสิ่งของอย่างน้อย 1 รายการ');
 
-        $total = array_sum(array_column(array_values($validItems), 'price'));
+        $total = array_sum(array_map(fn($i) => (float)$i['price'] * max(1, (int)($i['quantity'] ?? 1)), array_values($validItems)));
 
         $pdo->beginTransaction();
         try {
@@ -74,10 +75,11 @@ switch ($method) {
 
             $reqId   = (int)$pdo->lastInsertId();
             $itemStmt = $pdo->prepare(
-                "INSERT INTO `expense_items` (expense_request_id, item_name, price) VALUES (?, ?, ?)"
+                "INSERT INTO `expense_items` (expense_request_id, item_name, price, quantity) VALUES (?, ?, ?, ?)"
             );
             foreach ($validItems as $item) {
-                $itemStmt->execute([$reqId, trim($item['name']), (float)$item['price']]);
+                $qty = max(1, (int)($item['quantity'] ?? 1));
+                $itemStmt->execute([$reqId, trim($item['name']), (float)$item['price'], $qty]);
             }
             $pdo->commit();
         } catch (Exception $e) {
@@ -114,7 +116,7 @@ switch ($method) {
         $validItems = array_filter($items, fn($i) => trim($i['name'] ?? '') !== '' && (float)($i['price'] ?? 0) > 0);
         if (empty($validItems)) jsonError('กรุณาเพิ่มรายการสิ่งของอย่างน้อย 1 รายการ');
 
-        $total = array_sum(array_column(array_values($validItems), 'price'));
+        $total = array_sum(array_map(fn($i) => (float)$i['price'] * max(1, (int)($i['quantity'] ?? 1)), array_values($validItems)));
 
         $pdo->beginTransaction();
         try {
@@ -125,10 +127,11 @@ switch ($method) {
             $pdo->prepare("DELETE FROM `expense_items` WHERE expense_request_id = ?")->execute([$id]);
 
             $itemStmt = $pdo->prepare(
-                "INSERT INTO `expense_items` (expense_request_id, item_name, price) VALUES (?, ?, ?)"
+                "INSERT INTO `expense_items` (expense_request_id, item_name, price, quantity) VALUES (?, ?, ?, ?)"
             );
             foreach ($validItems as $item) {
-                $itemStmt->execute([$id, trim($item['name']), (float)$item['price']]);
+                $qty = max(1, (int)($item['quantity'] ?? 1));
+                $itemStmt->execute([$id, trim($item['name']), (float)$item['price'], $qty]);
             }
             $pdo->commit();
         } catch (Exception $e) {
