@@ -2,8 +2,8 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/db.php';
 
-requireAuth();
 $method = $_SERVER['REQUEST_METHOD'];
+if ($method !== 'GET') requireAuth();
 
 function formatExpense(array $r): array
 {

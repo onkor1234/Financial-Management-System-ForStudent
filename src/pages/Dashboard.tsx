@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { api, DashboardData, PaymentRequest, formatMoney } from '../lib/api';
+import { api, DashboardData, PaymentRequest, ExpenseRequest, ExpenseItem, formatMoney } from '../lib/api';
 import { format } from 'date-fns';
-import { CheckCircle, XCircle, Banknote, ClipboardList, Clock, Users, TrendingUp, Receipt, PlusCircle } from 'lucide-react';
+import { CheckCircle, XCircle, Banknote, ClipboardList, Clock, Users, TrendingUp, Receipt, PlusCircle, Eye } from 'lucide-react';
 
 export function Dashboard() {
   const emptyData: DashboardData = {
@@ -12,7 +12,9 @@ export function Dashboard() {
   };
 
   const [data, setData]               = useState<DashboardData>(emptyData);
-  const [selectedReq, setSelectedReq] = useState<PaymentRequest | null>(null);
+  const [selectedReq, setSelectedReq]         = useState<PaymentRequest | null>(null);
+  const [selectedExpense, setSelectedExpense] = useState<ExpenseRequest | null>(null);
+  const [selectedExpenseItems, setSelectedExpenseItems] = useState<ExpenseItem[]>([]);
   const [detailFilterSection, setDetailFilterSection] = useState('');
   const [detailSearch, setDetailSearch] = useState('');
   const [detailStatusFilter, setDetailStatusFilter] = useState<'all' | 'paid' | 'unpaid'>('all');
@@ -50,6 +52,21 @@ export function Dashboard() {
     setDetailSearch('');
     setDetailStatusFilter('all');
     setDetailFilterSection('');
+  };
+
+  const openExpenseModal = async (exp: ExpenseRequest) => {
+    setSelectedExpense(exp);
+    try {
+      const details = await api.expenseRequests.getDetails(exp.id);
+      setSelectedExpenseItems(details.items);
+    } catch {
+      setSelectedExpenseItems([]);
+    }
+  };
+
+  const closeExpenseModal = () => {
+    setSelectedExpense(null);
+    setSelectedExpenseItems([]);
   };
 
   const normalizedDetailSearch = detailSearch.trim().toLowerCase();
@@ -191,7 +208,7 @@ export function Dashboard() {
                 {data.recentExpenses.length === 0 ? (
                   <tr><td colSpan={3} className="px-6 py-4 text-center text-slate-500">ไม่มีรายการเบิกจ่ายล่าสุด</td></tr>
                 ) : data.recentExpenses.map(exp => (
-                  <tr key={exp.id} className="hover:bg-slate-50">
+                  <tr key={exp.id} className="hover:bg-slate-50 cursor-pointer" onClick={() => openExpenseModal(exp)}>
                     <td className="px-6 py-4 font-medium text-slate-800">{exp.title}</td>
                     <td className="px-6 py-4 font-bold text-slate-800">฿{formatMoney(exp.total_amount)}</td>
                     <td className="px-6 py-4">
@@ -243,6 +260,71 @@ export function Dashboard() {
           </table>
         </div>
       </div>
+
+      {selectedExpense && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+            <div className="fixed inset-0 transition-opacity bg-slate-900 bg-opacity-75" onClick={closeExpenseModal} />
+            <div className="relative inline-block w-full max-w-2xl p-6 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-xl border border-slate-200">
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <h3 className="text-xl font-bold text-slate-900">{selectedExpense.title}</h3>
+                  {selectedExpense.description && (
+                    <p className="text-sm text-slate-500 mt-1">{selectedExpense.description}</p>
+                  )}
+                </div>
+                <span className={`inline-flex px-2.5 py-1 rounded-full text-[11px] font-bold shrink-0 ${
+                  selectedExpense.status === 'approved' ? 'bg-green-100 text-green-700' :
+                  selectedExpense.status === 'rejected' ? 'bg-red-100 text-red-700' :
+                  'bg-amber-100 text-amber-700'
+                }`}>
+                  {selectedExpense.status === 'pending' ? 'รออนุมัติ' : selectedExpense.status === 'approved' ? 'อนุมัติแล้ว' : 'ปฏิเสธแล้ว'}
+                </span>
+              </div>
+
+              <p className="text-xs text-slate-400 mb-4">{format(new Date(selectedExpense.created_at), 'dd MMM yyyy HH:mm')}</p>
+
+              <div className="border border-slate-200 rounded-lg overflow-hidden">
+                <table className="min-w-full divide-y divide-slate-100 text-sm">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="px-4 py-2 text-left text-xs font-bold text-slate-500 uppercase">รายการ</th>
+                      <th className="px-4 py-2 text-right text-xs font-bold text-slate-500 uppercase">ราคา/หน่วย (฿)</th>
+                      <th className="px-4 py-2 text-center text-xs font-bold text-slate-500 uppercase">จำนวน</th>
+                      <th className="px-4 py-2 text-right text-xs font-bold text-slate-500 uppercase">รวม (฿)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-slate-100">
+                    {selectedExpenseItems.length === 0 ? (
+                      <tr><td colSpan={4} className="px-4 py-4 text-center text-slate-400">กำลังโหลด...</td></tr>
+                    ) : selectedExpenseItems.map(item => (
+                      <tr key={item.id} className="hover:bg-slate-50">
+                        <td className="px-4 py-2 text-slate-800">{item.item_name}</td>
+                        <td className="px-4 py-2 text-slate-800 text-right">{formatMoney(item.price)}</td>
+                        <td className="px-4 py-2 text-slate-800 text-center">{item.quantity ?? 1}</td>
+                        <td className="px-4 py-2 text-blue-700 font-semibold text-right">{formatMoney(item.price * (item.quantity ?? 1))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-slate-50 font-bold">
+                    <tr>
+                      <td colSpan={3} className="px-4 py-3 text-right">ยอดรวม:</td>
+                      <td className="px-4 py-3 text-right text-blue-600">฿{formatMoney(selectedExpense.total_amount)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+
+              <div className="mt-6">
+                <button type="button" onClick={closeExpenseModal}
+                  className="w-full px-4 py-2 text-sm font-bold text-slate-600 bg-slate-100 rounded-md hover:bg-slate-200">
+                  ปิดหน้าต่าง
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {selectedReq && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
