@@ -95,8 +95,13 @@ export function Layout() {
         <div className={`fixed inset-y-0 left-0 z-40 w-64 bg-[#0f172a] text-white transform transition-transform duration-200 ease-in-out md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:static md:flex-shrink-0 flex flex-col`}>
           <div className="flex-1 flex flex-col min-h-0">
             <div className="p-6 border-b border-slate-700">
-              <h1 className="text-xl font-bold tracking-tight text-blue-400">CMRU Finance<span className="text-white">Pro</span></h1>
-              <p className="text-xs text-slate-400 mt-1 uppercase tracking-widest font-semibold">คณะวิทยาศาสตร์และเทคโนโลยี</p>
+              <div className="flex items-center gap-3 mb-2">
+                <img src="/favicon.svg" alt="CMRU FinancePro Logo" className="w-9 h-9 flex-shrink-0" />
+                <h1 className="text-xl font-bold tracking-tight text-blue-400 leading-tight">
+                  CMRU Finance<span className="text-white">Pro</span>
+                </h1>
+              </div>
+              <p className="text-xs text-slate-400 uppercase tracking-widest font-semibold">คณะวิทยาศาสตร์และเทคโนโลยี</p>
             </div>
             <div className="flex-1 flex flex-col overflow-y-auto w-full pt-5 pb-4">
               <nav className="flex-1 px-4 space-y-2">
@@ -172,7 +177,8 @@ export function Layout() {
         {!showSidebar ? (
           // Public Top Header
           <header className="h-16 bg-white border-b border-slate-200 px-6 sm:px-8 flex items-center justify-between shadow-sm z-10 w-full flex-shrink-0">
-            <div>
+            <div className="flex items-center gap-2.5">
+              <img src="/favicon.svg" alt="Logo" className="w-8 h-8 flex-shrink-0" />
               <h1 className="text-xl font-bold tracking-tight text-blue-600">CMRU Finance<span className="text-slate-800">Pro</span></h1>
             </div>
             {location.pathname !== '/login' && (
