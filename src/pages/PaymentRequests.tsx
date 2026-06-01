@@ -280,7 +280,7 @@ export function PaymentRequests() {
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
             <div className="fixed inset-0 transition-opacity bg-slate-900 bg-opacity-75" onClick={closeDetails} />
-            <div className="relative inline-block w-full max-w-3xl p-6 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-xl border border-slate-200">
+            <div className="relative inline-block w-full max-w-3xl p-6 overflow-y-auto text-left align-middle transition-all transform bg-white shadow-xl rounded-xl border border-slate-200">
               <div className="flex justify-between items-start mb-4">
                 <div>
                   <h3 className="text-xl font-bold text-slate-900">รายละเอียด {selectedReq.title}</h3>
@@ -304,12 +304,12 @@ export function PaymentRequests() {
               {detailLoading ? (
                 <div className="py-8 text-center text-slate-500">กำลังโหลด...</div>
               ) : (
-                <div className="mt-4 max-h-96 overflow-y-auto space-y-6">
+                <div className="mt-4 max-h-96 overflow-y-auto overflow-x-auto space-y-6">
                   {(detailFilterSection ? [detailFilterSection] : uniqueSections).map(section => {
                     const sectionPayments = filteredPayments.filter(sp => sp.student.section === section);
                     if (sectionPayments.length === 0) return null;
                     return (
-                      <div key={section} className="border border-slate-200 rounded-lg overflow-hidden bg-white">
+                      <div key={section} className="border border-slate-200 rounded-lg overflow-x-auto bg-white">
                         <div className="bg-slate-100 px-4 py-2 border-b border-slate-200 text-sm font-bold text-slate-700">
                           กลุ่มเรียน: {section}
                         </div>

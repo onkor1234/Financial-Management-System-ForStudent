@@ -265,7 +265,7 @@ export function Dashboard() {
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
             <div className="fixed inset-0 transition-opacity bg-slate-900 bg-opacity-75" onClick={closeExpenseModal} />
-            <div className="relative inline-block w-full max-w-2xl p-6 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-xl border border-slate-200">
+            <div className="relative inline-block w-full max-w-2xl p-6 overflow-y-auto text-left align-middle transition-all transform bg-white shadow-xl rounded-xl border border-slate-200">
               <div className="flex justify-between items-start mb-4">
                 <div>
                   <h3 className="text-xl font-bold text-slate-900">{selectedExpense.title}</h3>
@@ -284,7 +284,7 @@ export function Dashboard() {
 
               <p className="text-xs text-slate-400 mb-4">{format(new Date(selectedExpense.created_at), 'dd MMM yyyy HH:mm')}</p>
 
-              <div className="border border-slate-200 rounded-lg overflow-hidden">
+              <div className="border border-slate-200 rounded-lg overflow-x-auto">
                 <table className="min-w-full divide-y divide-slate-100 text-sm">
                   <thead className="bg-slate-50">
                     <tr>
@@ -330,7 +330,7 @@ export function Dashboard() {
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
             <div className="fixed inset-0 transition-opacity bg-slate-900 bg-opacity-75" onClick={closeModal} />
-            <div className="relative inline-block w-full max-w-2xl px-4 pt-5 pb-4 overflow-hidden text-left align-bottom transition-all transform bg-white rounded-xl shadow-xl sm:my-8 sm:align-middle sm:p-6 border border-slate-200">
+            <div className="relative inline-block w-full max-w-2xl px-4 pt-5 pb-4 overflow-y-auto text-left align-bottom transition-all transform bg-white rounded-xl shadow-xl sm:my-8 sm:align-middle sm:p-6 border border-slate-200">
               <h3 className="text-lg font-bold leading-6 text-slate-900 mb-4">รายละเอียด {selectedReq.title}</h3>
               <div className="text-sm text-slate-500 space-y-2">
                 <p><strong>เป้าหมายกลุ่มเรียน:</strong> {selectedReq.target_sections.join(', ')}</p>
@@ -368,7 +368,7 @@ export function Dashboard() {
                     )}
                   </div>
                 </div>
-                <div className="max-h-64 overflow-y-auto space-y-4">
+                <div className="max-h-64 overflow-y-auto overflow-x-auto space-y-4">
                   {filteredDetail.length === 0 && (
                     <div className="border border-dashed border-slate-300 rounded-lg px-4 py-6 text-center text-sm text-slate-500 bg-slate-50">
                       ไม่พบข้อมูลตามเงื่อนไขที่เลือก
@@ -378,7 +378,7 @@ export function Dashboard() {
                     const sectionData = filteredDetail.filter(d => d.student.section === section);
                     if (sectionData.length === 0) return null;
                     return (
-                      <div key={section} className="border border-slate-200 rounded-lg overflow-hidden">
+                      <div key={section} className="border border-slate-200 rounded-lg overflow-x-auto">
                         <div className="bg-slate-100 px-4 py-2 border-b border-slate-200">
                           <span className="font-bold text-slate-700 text-sm">กลุ่มเรียน: {section}</span>
                         </div>

@@ -368,7 +368,7 @@ export function ExpenseRequests() {
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
             <div className="fixed inset-0 transition-opacity bg-slate-900 bg-opacity-75" onClick={() => setIsDetailsModalOpen(false)} />
-            <div className="relative inline-block w-full max-w-2xl p-6 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-xl border border-slate-200">
+            <div className="relative inline-block w-full max-w-2xl p-6 overflow-y-auto text-left align-middle transition-all transform bg-white shadow-xl rounded-xl border border-slate-200">
               <div className="flex justify-between items-start">
                 <div>
                   <h3 className="text-xl font-bold text-slate-900">{selectedReq.title}</h3>
@@ -398,7 +398,7 @@ export function ExpenseRequests() {
 
               <div className="mt-6 border-t border-slate-100 pt-4">
                 <h4 className="text-sm font-bold text-slate-700 mb-2">รายการสิ่งของ</h4>
-                <div className="border border-slate-200 rounded-lg overflow-hidden max-h-60 overflow-y-auto">
+                <div className="border border-slate-200 rounded-lg overflow-x-auto max-h-60 overflow-y-auto">
                   <table className="min-w-full divide-y divide-slate-100 text-sm">
                     <thead className="bg-slate-50 sticky top-0">
                       <tr>
