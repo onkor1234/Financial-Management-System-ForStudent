@@ -1,1 +1,10 @@
 @import "tailwindcss";
+
+@keyframes fadeFromGreen {
+  0%   { color: rgb(22 163 74); }   /* green-600 */
+  100% { color: rgb(148 163 184); } /* slate-400 */
+}
+
+.flash-on-update {
+  animation: fadeFromGreen 1.5s ease-out;
+}

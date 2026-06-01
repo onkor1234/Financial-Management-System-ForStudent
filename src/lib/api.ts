@@ -306,5 +306,11 @@ export const api = {
 
     getPaymentStatus: (id: number) =>
       request<PublicPaymentStatusDetails>('GET', `/payment_status.php?id=${id}`),
+
+    getPaymentStatusVersion: (id: number) =>
+      request<{ version: string; updated_at: number }>(
+        'GET',
+        `/payment_status_version.php?id=${id}`
+      ),
   },
 };

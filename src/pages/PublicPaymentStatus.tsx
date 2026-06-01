@@ -1,49 +1,159 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import { api, PublicPaymentStatusDetails, formatMoney } from '../lib/api';
-import { CheckCircle2, XCircle, RefreshCw, Receipt, Users, Wallet } from 'lucide-react';
+import { CheckCircle2, XCircle, RefreshCw, Receipt, Users, Wallet, WifiOff } from 'lucide-react';
 
-const REFRESH_INTERVAL_MS = 15000;
+const POLL_INTERVAL_MS         = 2500;  // version check — very lightweight
+const POLL_INTERVAL_HIDDEN_MS  = 30000; // slower when tab is hidden
+const BACKOFF_MAX_MS           = 30000;
+
+type LiveStatus = 'connecting' | 'live' | 'reconnecting' | 'offline';
 
 export function PublicPaymentStatus() {
   const { id } = useParams<{ id: string }>();
   const requestId = Number(id);
 
-  const [data, setData]               = useState<PublicPaymentStatusDetails | null>(null);
-  const [loading, setLoading]         = useState(true);
-  const [error, setError]             = useState<string | null>(null);
-  const [refreshing, setRefreshing]   = useState(false);
+  const [data, setData]                   = useState<PublicPaymentStatusDetails | null>(null);
+  const [loading, setLoading]             = useState(true);
+  const [error, setError]                 = useState<string | null>(null);
+  const [refreshing, setRefreshing]       = useState(false);
   const [filterSection, setFilterSection] = useState('');
   const [statusFilter, setStatusFilter]   = useState<'all' | 'paid' | 'unpaid'>('all');
   const [previewImage, setPreviewImage]   = useState<string | null>(null);
   const [lastUpdated, setLastUpdated]     = useState<Date | null>(null);
+  const [liveStatus, setLiveStatus]       = useState<LiveStatus>('connecting');
+  const [flashTick, setFlashTick]         = useState(0);
 
-  const load = async (silent = false) => {
+  // Refs survive re-renders without triggering effect resets
+  const versionRef    = useRef<string | null>(null);
+  const timerRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelledRef  = useRef(false);
+  const backoffRef    = useRef(POLL_INTERVAL_MS);
+
+  const fetchFull = async (silent: boolean) => {
+    if (silent) setRefreshing(true);
+    else setLoading(true);
+    try {
+      const res = await api.dashboard.getPaymentStatus(requestId);
+      if (cancelledRef.current) return;
+      setData(res);
+      setLastUpdated(new Date());
+      setError(null);
+      setFlashTick(t => t + 1); // trigger visual blink
+    } catch (err) {
+      if (!cancelledRef.current) {
+        setError(err instanceof Error ? err.message : 'โหลดข้อมูลล้มเหลว');
+      }
+      throw err;
+    } finally {
+      if (!cancelledRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    }
+  };
+
+  // One tick of the poll loop: check version, refetch only if changed
+  const pollOnce = async (): Promise<boolean> => {
+    if (!requestId) return false;
+    try {
+      const v = await api.dashboard.getPaymentStatusVersion(requestId);
+      if (cancelledRef.current) return false;
+
+      if (versionRef.current === null) {
+        // First tick: just record version, full data loaded separately
+        versionRef.current = v.version;
+      } else if (v.version !== versionRef.current) {
+        versionRef.current = v.version;
+        await fetchFull(true);
+      }
+
+      setLiveStatus('live');
+      backoffRef.current = POLL_INTERVAL_MS;
+      return true;
+    } catch {
+      if (!cancelledRef.current) {
+        setLiveStatus('reconnecting');
+        backoffRef.current = Math.min(backoffRef.current * 2, BACKOFF_MAX_MS);
+      }
+      return false;
+    }
+  };
+
+  const scheduleNext = () => {
+    if (cancelledRef.current) return;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    const interval = document.visibilityState === 'visible'
+      ? backoffRef.current
+      : POLL_INTERVAL_HIDDEN_MS;
+    timerRef.current = setTimeout(async () => {
+      await pollOnce();
+      scheduleNext();
+    }, interval);
+  };
+
+  // Manual refresh button — fetch full immediately, reset backoff
+  const manualRefresh = async () => {
+    backoffRef.current = POLL_INTERVAL_MS;
+    try {
+      await fetchFull(true);
+      const v = await api.dashboard.getPaymentStatusVersion(requestId);
+      versionRef.current = v.version;
+      setLiveStatus('live');
+    } catch {
+      setLiveStatus('reconnecting');
+    }
+  };
+
+  // Boot + lifecycle: initial load, polling loop, visibility + online listeners
+  useEffect(() => {
     if (!requestId) {
       setError('ลิงก์ไม่ถูกต้อง');
       setLoading(false);
       return;
     }
-    if (silent) setRefreshing(true);
-    else setLoading(true);
-    try {
-      const res = await api.dashboard.getPaymentStatus(requestId);
-      setData(res);
-      setLastUpdated(new Date());
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'โหลดข้อมูลล้มเหลว');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
 
-  useEffect(() => {
-    void load();
-    const t = setInterval(() => { void load(true); }, REFRESH_INTERVAL_MS);
-    return () => clearInterval(t);
+    cancelledRef.current = false;
+
+    (async () => {
+      try {
+        await fetchFull(false);
+        const v = await api.dashboard.getPaymentStatusVersion(requestId);
+        versionRef.current = v.version;
+        setLiveStatus('live');
+      } catch {
+        setLiveStatus('reconnecting');
+      }
+      scheduleNext();
+    })();
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        // Tab came back into focus: poll immediately so user sees fresh data
+        if (timerRef.current) clearTimeout(timerRef.current);
+        backoffRef.current = POLL_INTERVAL_MS;
+        void pollOnce().then(scheduleNext);
+      }
+    };
+    const onOnline = () => {
+      backoffRef.current = POLL_INTERVAL_MS;
+      if (timerRef.current) clearTimeout(timerRef.current);
+      void pollOnce().then(scheduleNext);
+    };
+    const onOffline = () => setLiveStatus('offline');
+
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('online',  onOnline);
+    window.addEventListener('offline', onOffline);
+
+    return () => {
+      cancelledRef.current = true;
+      if (timerRef.current) clearTimeout(timerRef.current);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('online',  onOnline);
+      window.removeEventListener('offline', onOffline);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestId]);
 
@@ -102,15 +212,18 @@ export function PublicPaymentStatus() {
               CMRU Finance<span className="text-slate-800">Pro</span>
             </h1>
           </div>
-          <button
-            onClick={() => void load(true)}
-            disabled={refreshing}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-md disabled:opacity-60"
-            title="รีเฟรชสถานะ"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-            <span className="hidden sm:inline">รีเฟรช</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <LiveBadge status={liveStatus} />
+            <button
+              onClick={() => void manualRefresh()}
+              disabled={refreshing}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-md disabled:opacity-60"
+              title="รีเฟรชด้วยตนเอง"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">รีเฟรช</span>
+            </button>
+          </div>
         </div>
       </header>
 
@@ -124,7 +237,10 @@ export function PublicPaymentStatus() {
               <p className="text-sm text-slate-500 mt-1">
                 กลุ่มเรียน: {data.target_sections.join(', ')} · ยอดต่อคน ฿{formatMoney(data.amount_per_person)}
               </p>
-              <p className="text-xs text-slate-400 mt-2">
+              <p
+                key={flashTick}
+                className="text-xs text-slate-400 mt-2 flash-on-update"
+              >
                 สร้างเมื่อ {format(new Date(data.created_at), 'dd MMM yyyy')}
                 {lastUpdated && ` · อัปเดตล่าสุด ${format(lastUpdated, 'HH:mm:ss')}`}
               </p>
@@ -274,7 +390,7 @@ export function PublicPaymentStatus() {
         </div>
 
         <p className="text-center text-xs text-slate-400 pt-2">
-          หน้านี้รีเฟรชอัตโนมัติทุก {Math.round(REFRESH_INTERVAL_MS / 1000)} วินาที
+          อัปเดตข้อมูลแบบเรียลไทม์
         </p>
       </main>
 
@@ -334,5 +450,43 @@ function StatCard({
       </div>
       {sub && <p className="text-[11px] text-slate-400 mt-2 truncate">{sub}</p>}
     </div>
+  );
+}
+
+function LiveBadge({ status }: { status: LiveStatus }) {
+  if (status === 'offline') {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-500">
+        <WifiOff className="w-3 h-3" /> ออฟไลน์
+      </span>
+    );
+  }
+  if (status === 'reconnecting') {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700">
+        <span className="relative flex h-2 w-2">
+          <span className="absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75 animate-ping" />
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
+        </span>
+        กำลังเชื่อมต่อใหม่
+      </span>
+    );
+  }
+  if (status === 'connecting') {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-500">
+        <span className="h-2 w-2 rounded-full bg-slate-400 animate-pulse" />
+        กำลังเชื่อมต่อ
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-bold bg-green-50 text-green-700">
+      <span className="relative flex h-2 w-2">
+        <span className="absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75 animate-ping" />
+        <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+      </span>
+      LIVE
+    </span>
   );
 }

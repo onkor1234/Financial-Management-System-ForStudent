@@ -120,6 +120,11 @@ try {
     $pdo->exec("ALTER TABLE `users` ADD COLUMN `profile_image` LONGTEXT DEFAULT NULL");
 } catch (PDOException $e) { /* column already exists */ }
 
+// ─── Auto-migration: add updated_at to payments (for real-time change detection)
+try {
+    $pdo->exec("ALTER TABLE `payments` ADD COLUMN `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
+} catch (PDOException $e) { /* column already exists */ }
+
 // ─── Seed: insert default users only when the table is empty ─────────────────
 
 $userCount = (int)$pdo->query("SELECT COUNT(*) FROM `users`")->fetchColumn();
