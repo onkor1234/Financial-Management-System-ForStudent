@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api, PaymentRequest, PaymentRequestWithDetails, StudentPayment, Section, formatMoney } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
-import { Plus, Check, Download, Trash2 } from 'lucide-react';
+import { Plus, Check, Download, Trash2, Share2, Copy } from 'lucide-react';
 import { format } from 'date-fns';
 import * as XLSX from 'xlsx';
 
@@ -22,6 +22,21 @@ export function PaymentRequests() {
   const [detailLoading, setDetailLoading]           = useState(false);
   const [previewImage, setPreviewImage]             = useState<string | null>(null);
   const [deletingRequestId, setDeletingRequestId]   = useState<number | null>(null);
+  const [copiedRequestId, setCopiedRequestId]       = useState<number | null>(null);
+
+  const buildShareUrl = (requestId: number) =>
+    `${window.location.origin}/share/payment/${requestId}`;
+
+  const copyShareLink = async (requestId: number) => {
+    const url = buildShareUrl(requestId);
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedRequestId(requestId);
+      setTimeout(() => setCopiedRequestId(prev => (prev === requestId ? null : prev)), 1800);
+    } catch {
+      window.prompt('คัดลอกลิงก์นี้ด้วยตนเอง', url);
+    }
+  };
 
   useEffect(() => { loadAll(); }, []);
 
@@ -179,7 +194,7 @@ export function PaymentRequests() {
                 <th className="px-6 py-3 border-b border-slate-100">กลุ่มเป้าหมาย</th>
                 <th className="px-6 py-3 border-b border-slate-100">ยอด/คน</th>
                 <th className="px-6 py-3 border-b border-slate-100">วันที่สร้าง</th>
-                <th className="px-6 py-3 border-b border-slate-100 text-right">ลบ</th>
+                <th className="px-6 py-3 border-b border-slate-100 text-right">การดำเนินการ</th>
               </tr>
             </thead>
             <tbody className="text-sm divide-y divide-slate-100">
@@ -192,18 +207,39 @@ export function PaymentRequests() {
                   <td className="px-6 py-4 font-bold text-slate-900">฿{formatMoney(req.amount_per_person)}</td>
                   <td className="px-6 py-4 text-slate-500">{format(new Date(req.created_at), 'dd MMM yyyy')}</td>
                   <td className="px-6 py-4 text-right">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void handleDeleteRequest(req.id);
-                      }}
-                      disabled={deletingRequestId === req.id}
-                      className="inline-flex items-center px-2.5 py-1.5 rounded-md text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 disabled:opacity-60"
-                    >
-                      <Trash2 className="w-3.5 h-3.5 mr-1" />
-                      {deletingRequestId === req.id ? 'กำลังลบ...' : 'ลบ'}
-                    </button>
+                    <div className="inline-flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void copyShareLink(req.id);
+                        }}
+                        className="inline-flex items-center px-2.5 py-1.5 rounded-md text-xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100"
+                        title="คัดลอกลิงก์สาธารณะ"
+                      >
+                        {copiedRequestId === req.id ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 mr-1" /> คัดลอกแล้ว
+                          </>
+                        ) : (
+                          <>
+                            <Share2 className="w-3.5 h-3.5 mr-1" /> แชร์ลิงก์
+                          </>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handleDeleteRequest(req.id);
+                        }}
+                        disabled={deletingRequestId === req.id}
+                        className="inline-flex items-center px-2.5 py-1.5 rounded-md text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 disabled:opacity-60"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 mr-1" />
+                        {deletingRequestId === req.id ? 'กำลังลบ...' : 'ลบ'}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -298,6 +334,44 @@ export function PaymentRequests() {
                     className="inline-flex items-center px-4 py-2 bg-slate-100 text-slate-600 rounded-md text-sm font-bold hover:bg-slate-200">
                     <Download className="w-4 h-4 mr-2" /> ส่งออก Excel
                   </button>
+                </div>
+              </div>
+
+              {/* Public share link */}
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-lg flex flex-col sm:flex-row gap-2 sm:items-center">
+                <div className="flex items-center gap-2 text-xs font-bold text-blue-700 flex-shrink-0">
+                  <Share2 className="w-4 h-4" /> ลิงก์สาธารณะ (ไม่ต้องล็อกอิน)
+                </div>
+                <input
+                  readOnly
+                  value={buildShareUrl(selectedReq.id)}
+                  onFocus={(e) => e.currentTarget.select()}
+                  className="flex-1 min-w-0 px-3 py-1.5 text-xs bg-white border border-blue-200 rounded-md text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => void copyShareLink(selectedReq.id)}
+                    className="inline-flex items-center px-3 py-1.5 rounded-md text-xs font-bold text-white bg-blue-600 hover:bg-blue-700"
+                  >
+                    {copiedRequestId === selectedReq.id ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 mr-1" /> คัดลอกแล้ว
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5 mr-1" /> คัดลอก
+                      </>
+                    )}
+                  </button>
+                  <a
+                    href={buildShareUrl(selectedReq.id)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center px-3 py-1.5 rounded-md text-xs font-bold text-blue-700 bg-white border border-blue-200 hover:bg-blue-100"
+                  >
+                    เปิด
+                  </a>
                 </div>
               </div>
 

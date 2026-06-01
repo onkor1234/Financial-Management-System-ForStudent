@@ -17,6 +17,7 @@ import { PaymentRequests } from './pages/PaymentRequests';
 import { ExpenseRequests } from './pages/ExpenseRequests';
 
 import { ManageUsers } from './pages/ManageUsers';
+import { PublicPaymentStatus } from './pages/PublicPaymentStatus';
 
 // Protected Route Component
 function ProtectedRoute({ children, requiredRole }: { children: React.ReactNode, requiredRole?: 'admin' | 'operation' }) {
@@ -62,6 +63,9 @@ export default function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
+          {/* Public shareable payment-status page (no auth, no sidebar) */}
+          <Route path="/share/payment/:id" element={<PublicPaymentStatus />} />
+
           <Route path="/" element={<Layout />}>
             <Route index element={<Dashboard />} />
             <Route path="login" element={<Login />} />

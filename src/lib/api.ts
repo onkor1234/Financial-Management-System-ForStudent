@@ -66,11 +66,24 @@ export interface PaymentRequestWithDetails extends PaymentRequest {
 
 export interface PublicStudentPaymentStatus {
   student: Pick<Student, 'id' | 'student_id' | 'first_name' | 'last_name' | 'section'>;
-  payment: { is_paid: boolean } | null;
+  payment: {
+    is_paid: boolean;
+    receipt_image: string | null;
+    paid_at: string | null;
+  } | null;
+}
+
+export interface PaymentStatusTotals {
+  total_count: number;
+  paid_count: number;
+  unpaid_count: number;
+  paid_amount: number;
+  expected_amount: number;
 }
 
 export interface PublicPaymentStatusDetails extends PaymentRequest {
   student_payments: PublicStudentPaymentStatus[];
+  totals: PaymentStatusTotals;
 }
 
 export interface ExpenseRequest {

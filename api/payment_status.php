@@ -46,17 +46,24 @@ if ($isAll) {
     }
 }
 
-$payStmt = $pdo->prepare("SELECT student_id, is_paid FROM `payments` WHERE request_id = ?");
+$payStmt = $pdo->prepare("SELECT student_id, is_paid, receipt_image, paid_at FROM `payments` WHERE request_id = ?");
 $payStmt->execute([$requestId]);
 $payments = $payStmt->fetchAll();
 $payMap   = [];
 foreach ($payments as $p) {
-    $payMap[(int)$p['student_id']] = (bool)$p['is_paid'];
+    $payMap[(int)$p['student_id']] = $p;
 }
 
-$studentPayments = array_map(function ($s) use ($payMap) {
+$amountPerPerson = (float)$req['amount_per_person'];
+$paidCount       = 0;
+
+$studentPayments = array_map(function ($s) use ($payMap, &$paidCount) {
     $sid = (int)$s['id'];
-    $isPaid = $payMap[$sid] ?? null;
+    $p   = $payMap[$sid] ?? null;
+    $isPaid = $p ? (bool)$p['is_paid'] : null;
+    if ($isPaid === true) {
+        $paidCount++;
+    }
 
     return [
         'student' => [
@@ -66,18 +73,29 @@ $studentPayments = array_map(function ($s) use ($payMap) {
             'last_name'  => $s['last_name'],
             'section'    => $s['section'] ?? '',
         ],
-        'payment' => $isPaid === null ? null : [
-            'is_paid' => $isPaid,
+        'payment' => $p === null ? null : [
+            'is_paid'       => (bool)$p['is_paid'],
+            'receipt_image' => normalizeReceiptImage($p['receipt_image']),
+            'paid_at'       => $p['paid_at'],
         ],
     ];
 }, $students);
+
+$totalCount = count($studentPayments);
 
 jsonResponse([
     'id'                => (int)$req['id'],
     'title'             => $req['title'],
     'target_sections'   => $targets,
-    'amount_per_person' => (float)$req['amount_per_person'],
+    'amount_per_person' => $amountPerPerson,
     'created_by'        => $req['created_by'] ? (int)$req['created_by'] : null,
     'created_at'        => $req['created_at'],
     'student_payments'  => $studentPayments,
+    'totals'            => [
+        'total_count'      => $totalCount,
+        'paid_count'       => $paidCount,
+        'unpaid_count'     => $totalCount - $paidCount,
+        'paid_amount'      => $paidCount * $amountPerPerson,
+        'expected_amount'  => $totalCount * $amountPerPerson,
+    ],
 ]);
