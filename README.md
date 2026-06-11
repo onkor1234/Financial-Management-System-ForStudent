@@ -11,7 +11,7 @@
 | Frontend | React 19 + TypeScript + Tailwind CSS 4 + Vite 6 |
 | Backend  | PHP 8.1+ |
 | Database | MySQL 8+ |
-| File Storage | Base64 (รูปภาพใบเสร็จเก็บใน LONGTEXT) |
+| File Storage | Base64 data URL (รูปภาพ/ใบเสร็จ/ลายเซ็นเก็บใน LONGTEXT) |
 
 ---
 
@@ -21,7 +21,7 @@
 cmru-unifinance/
 ├── api/                        # PHP Backend
 │   ├── db.php                  # DB connection + Auto-migration + Seed data
-│   ├── config.php              # CORS, Session, Helper functions (formatUser)
+│   ├── config.php              # CORS, Session, Helper functions
 │   ├── auth/
 │   │   ├── login.php           # POST /api/auth/login.php
 │   │   ├── logout.php          # POST /api/auth/logout.php
@@ -31,9 +31,9 @@ cmru-unifinance/
 │   ├── sections.php            # GET/POST/PUT/DELETE /api/sections.php
 │   ├── majors.php              # GET/POST/PUT/DELETE /api/majors.php
 │   ├── departments.php         # GET/POST/PUT/DELETE /api/departments.php
-│   ├── payment_requests.php    # GET/POST /api/payment_requests.php
-│   ├── payments.php            # PATCH /api/payments.php?id=X
-│   ├── expense_requests.php    # GET/POST/PATCH /api/expense_requests.php
+│   ├── payment_requests.php    # GET/POST/DELETE /api/payment_requests.php
+│   ├── payments.php            # PATCH /api/payments.php
+│   ├── expense_requests.php    # GET/POST/PUT/PATCH/DELETE /api/expense_requests.php
 │   ├── budget.php              # GET/POST /api/budget.php
 │   └── dashboard.php           # GET /api/dashboard.php
 ├── src/
@@ -41,10 +41,13 @@ cmru-unifinance/
 │   │   └── api.ts              # API Service Layer (Types + Fetch wrapper)
 │   ├── contexts/
 │   │   └── AuthContext.tsx     # Auth State + Session management
-│   └── pages/                  # หน้าต่าง ๆ ของระบบ
+│   └── pages/
+│       ├── Dashboard.tsx       # KPI cards, รายการล่าสุด, modal ดูหลักฐาน
+│       ├── ExpenseRequests.tsx # เบิกจ่าย + ReceiptUploader/Viewer + printReport (exported)
 │       ├── MasterData.tsx      # Master Data (กลุ่มเรียน / สาขาวิชา / ตำแหน่ง)
 │       └── ...
 ├── vite.config.ts              # Vite config + API Proxy
+├── AGENTS.md                   # คำแนะนำสำหรับ AI agents
 └── README.md
 ```
 
@@ -108,6 +111,8 @@ users (
   role ENUM('admin','operation'), allowed_pages JSON,
   profile_image LONGTEXT,
   department_id FK→departments(SET NULL),
+  signature LONGTEXT,             -- base64 PNG data URL
+  can_approve_expenses TINYINT,   -- 1 = อนุมัติเบิกจ่ายได้
   created_at, updated_at
 )
 
@@ -133,19 +138,22 @@ payments (
 )
 
 expense_requests (
-  id, title, total_amount, description,
+  id, title, total_amount DECIMAL, description TEXT,
   status ENUM('pending','approved','rejected'),
   created_by FK→users, approved_by FK→users,
-  created_at, updated_at
+  requester_name VARCHAR(200),
+  requester_signature LONGTEXT,   -- base64 PNG data URL
+  receipt_images LONGTEXT,        -- JSON array of base64 image data URLs
+  created_at, updated_at, approved_at
 )
 
 expense_items (
   id, expense_request_id FK→expense_requests(CASCADE),
-  item_name, price, quantity
+  item_name, price DECIMAL, quantity INT
 )
 
 budget_additions (
-  id, amount, description, created_by FK→users, created_at
+  id, amount DECIMAL, description, created_by FK→users, created_at
 )
 ```
 
@@ -153,25 +161,52 @@ budget_additions (
 
 ## API Endpoints
 
+### Auth
+
 | Method | Endpoint | คำอธิบาย | Auth |
 |--------|----------|---------|------|
-| POST | `/api/auth/login.php` | เข้าสู่ระบบ | - |
+| POST | `/api/auth/login.php` | เข้าสู่ระบบ | — |
 | POST | `/api/auth/logout.php` | ออกจากระบบ | ✅ |
-| GET | `/api/auth/me.php` | ดู session ปัจจุบัน | ✅ |
-| GET/POST/PUT/DELETE | `/api/users.php` | จัดการสมาชิก | Admin |
-| GET/POST/PUT/DELETE | `/api/students.php` | จัดการนักศึกษา | ✅ |
-| GET/POST/PUT/DELETE | `/api/sections.php` | จัดการกลุ่มเรียน | ✅ |
-| GET/POST/PUT/DELETE | `/api/majors.php` | จัดการสาขาวิชา | ✅ |
-| GET/POST/PUT/DELETE | `/api/departments.php` | จัดการตำแหน่ง | ✅ (เขียน: Admin) |
-| GET | `/api/payment_requests.php` | รายการเรียกเก็บทั้งหมด | ✅ |
+| GET  | `/api/auth/me.php` | ดู session ปัจจุบัน | ✅ |
+
+### Master Data
+
+| Method | Endpoint | Auth |
+|--------|----------|------|
+| GET/POST/PUT/DELETE | `/api/users.php` | Admin |
+| GET/POST/PUT/DELETE | `/api/students.php` | ✅ |
+| GET/POST/PUT/DELETE | `/api/sections.php` | ✅ |
+| GET/POST/PUT/DELETE | `/api/majors.php` | ✅ |
+| GET/POST/PUT/DELETE | `/api/departments.php` | ✅ (เขียน: Admin) |
+
+### Payments
+
+| Method | Endpoint | คำอธิบาย | Auth |
+|--------|----------|---------|------|
+| GET | `/api/payment_requests.php` | รายการทั้งหมด | ✅ |
 | GET | `/api/payment_requests.php?id=X` | รายละเอียด + สถานะชำระ | ✅ |
 | POST | `/api/payment_requests.php` | สร้างรายการ (auto-create payments) | ✅ |
-| PATCH | `/api/payments.php?id=X` | อัปเดตสถานะชำระ / แนบใบเสร็จ | ✅ |
-| GET/POST | `/api/expense_requests.php` | รายการเบิกจ่าย | ✅ |
-| GET | `/api/expense_requests.php?id=X` | รายละเอียด + รายการสิ่งของ | ✅ |
-| PATCH | `/api/expense_requests.php?id=X` | อนุมัติ/ปฏิเสธ | Admin |
+| PATCH | `/api/payments.php` | อัปเดตสถานะชำระ / แนบใบเสร็จ | ✅ |
+
+### Expense Requests
+
+| Method | Endpoint | คำอธิบาย | Auth |
+|--------|----------|---------|------|
+| GET | `/api/expense_requests.php` | รายการทั้งหมด | — |
+| GET | `/api/expense_requests.php?id=X` | รายละเอียด + items | — |
+| POST | `/api/expense_requests.php` | สร้างคำขอ (รองรับ `receipt_images[]`) | ✅ |
+| PUT | `/api/expense_requests.php?id=X` | แก้ไข (pending เท่านั้น) | creator/admin |
+| PATCH | `/api/expense_requests.php?id=X` | approve/reject | requireApprover |
+| PATCH + `action:update_requester` | `/api/expense_requests.php?id=X` | แก้ไขชื่อ/ลายเซ็น | creator/admin |
+| PATCH + `action:update_receipts` | `/api/expense_requests.php?id=X` | แนบ/แทนที่ใบเสร็จ (ทุก status) | creator/admin |
+| DELETE | `/api/expense_requests.php?id=X` | ลบ | creator(pending)/admin(ทุก status) |
+
+### Budget & Dashboard
+
+| Method | Endpoint | คำอธิบาย | Auth |
+|--------|----------|---------|------|
 | GET/POST | `/api/budget.php` | รายการเติมงบประมาณ | Admin |
-| GET | `/api/dashboard.php` | ข้อมูลรวม Dashboard | ✅ |
+| GET | `/api/dashboard.php` | KPIs + recentExpenses(8) + paymentRequests + budgetAdditions | ✅ |
 
 ---
 
@@ -179,15 +214,27 @@ budget_additions (
 
 | เส้นทาง | หน้า | สิทธิ์ |
 |---------|------|--------|
-| `/` | Dashboard | ✅ |
+| `/` | Dashboard — KPI, รายการล่าสุด, modal หลักฐาน (ใบเสร็จ + PDF) | ✅ |
 | `/payments` | รายการเรียกเก็บเงิน | ✅ |
-| `/expenses` | รายการเบิกจ่าย | ✅ |
+| `/expenses` | รายการเบิกจ่าย — สร้าง/แก้ไข/อนุมัติ/แนบใบเสร็จ/พิมพ์ PDF | ✅ |
 | `/budget` | งบประมาณระบบ | Admin |
 | `/students` | รายชื่อนักศึกษา | Admin |
 | `/master-data` | Master Data (กลุ่มเรียน / สาขาวิชา / ตำแหน่ง) | Admin |
 | `/users` | จัดการสมาชิก | Admin |
 
-> **Backward compat:** user ที่มี `/sections` หรือ `/majors` ใน `allowed_pages` เดิม สามารถเข้า `/master-data` ได้โดยอัตโนมัติ
+> **Backward compat:** user ที่มี `/sections` หรือ `/majors` ใน `allowed_pages` เดิม เข้า `/master-data` ได้โดยอัตโนมัติ
+
+---
+
+## ฟีเจอร์ใบเสร็จ / หลักฐาน
+
+ระบบรองรับการแนบรูปภาพใบเสร็จ/สลิปใน expense requests:
+
+- **ตอนสร้าง:** แนบรูปได้ทันทีในฟอร์ม Create
+- **ย้อนหลัง:** ปุ่ม "แนบใบเสร็จ" ใน details modal — ใช้ได้ทุก status (pending/approved/rejected)
+- **แสดงผล:** thumbnail grid พร้อม click-to-fullscreen ทั้งใน `/expenses` และ Dashboard
+- **ใน PDF:** ส่วนท้ายของรายงาน PDF แสดงรูปใบเสร็จที่แนบไว้
+- **Dashboard evidence:** modal แสดง 2 หลักฐาน — (1) รูปใบเสร็จ (2) ปุ่มพิมพ์ PDF สำหรับที่อนุมัติแล้ว
 
 ---
 
@@ -198,11 +245,11 @@ budget_additions (
 | ดู Dashboard | ✅ | ✅ |
 | รายการเรียกเก็บ / อัปเดตการชำระ | ✅ | ✅ |
 | ดูรายการเบิกจ่าย | ✅ | ✅ |
-| สร้างคำขอเบิกจ่าย | ❌ | ✅ |
-| อนุมัติ/ปฏิเสธเบิกจ่าย | ✅ | ❌ |
+| สร้างคำขอเบิกจ่าย + แนบใบเสร็จ | ✅ | ✅ |
+| อนุมัติ/ปฏิเสธเบิกจ่าย | ✅ | ✅ (ถ้า `can_approve_expenses = 1`) |
 | เติมงบประมาณ | ✅ | ❌ |
 | จัดการนักศึกษา | ✅ | ❌ |
-| Master Data (กลุ่มเรียน / สาขาวิชา / ตำแหน่ง) | ✅ | ❌ |
+| Master Data | ✅ | ❌ |
 | จัดการสมาชิก | ✅ | ❌ |
 
 ---
@@ -228,7 +275,8 @@ RewriteRule ^(.*)$ /index.html [L]
 
 ## การพัฒนาเพิ่มเติม
 
-- **เพิ่มหน้าใหม่:** สร้างไฟล์ใน `src/pages/`, เพิ่ม route ใน `src/App.tsx`, เพิ่ม path ใน `AVAILABLE_PAGES` (ManageUsers.tsx)
+- **เพิ่มหน้าใหม่:** สร้างไฟล์ใน `src/pages/`, เพิ่ม route ใน `src/App.tsx`, เพิ่ม path ใน `AVAILABLE_PAGES` (`ManageUsers.tsx`)
 - **เพิ่ม API endpoint:** ทุกไฟล์ต้อง `require_once __DIR__ . '/config.php'` และ `require_once __DIR__ . '/db.php'`
-- **Migration เพิ่มเติม:** เพิ่ม `$pdo->exec("ALTER TABLE ...")` ใน `api/db.php` ครอบด้วย `try/catch`
-- **เพิ่มแท็บใน Master Data:** แก้ไข `src/pages/MasterData.tsx` เพิ่ม entry ใน `TAB_META` และ handler ที่เกี่ยวข้อง
+- **Migration เพิ่มเติม:** เพิ่ม `try { $pdo->exec("ALTER TABLE ..."); } catch (PDOException $e) {}` ใน `api/db.php`
+- **เพิ่มแท็บใน Master Data:** แก้ไข `src/pages/MasterData.tsx` เพิ่ม entry ใน `TAB_META`
+- **Shared components:** `printReport`, `ReceiptUploader`, `ReceiptViewer` อยู่ใน `src/pages/ExpenseRequests.tsx` — import ได้จากไฟล์อื่น
