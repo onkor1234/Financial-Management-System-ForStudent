@@ -26,6 +26,9 @@ function formatExpense(array $r): array
         'approver_name'        => $r['approver_name'] ?? null,
         'approver_dept'        => $r['approver_dept'] ?? null,
         'approver_signature'   => $r['approver_signature'] ?? null,
+        'receipt_images'       => (isset($r['receipt_images']) && $r['receipt_images'])
+                                    ? (json_decode($r['receipt_images'], true) ?: [])
+                                    : [],
     ];
 }
 
@@ -113,13 +116,16 @@ switch ($method) {
             $requesterSig = $sRow ? $sRow['signature'] : null;
         }
 
+        $receiptImages = array_values($body['receipt_images'] ?? []);
+        $receiptImagesJson = !empty($receiptImages) ? json_encode($receiptImages) : null;
+
         $pdo->beginTransaction();
         try {
             $pdo->prepare(
                 "INSERT INTO `expense_requests`
-                 (title, total_amount, description, status, created_by, requester_name, requester_signature)
-                 VALUES (?, ?, ?, 'pending', ?, ?, ?)"
-            )->execute([$title, $total, $desc ?: null, $session['user_id'], $requesterName ?: null, $requesterSig]);
+                 (title, total_amount, description, status, created_by, requester_name, requester_signature, receipt_images)
+                 VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)"
+            )->execute([$title, $total, $desc ?: null, $session['user_id'], $requesterName ?: null, $requesterSig, $receiptImagesJson]);
 
             $reqId    = (int)$pdo->lastInsertId();
             $itemStmt = $pdo->prepare(
@@ -235,6 +241,23 @@ switch ($method) {
                 )->execute($params);
             }
 
+            $stmt = $pdo->prepare(LIST_SQL . " WHERE er.id = ?");
+            $stmt->execute([$id]);
+            jsonResponse(formatExpense($stmt->fetch()));
+        }
+
+        if ($action === 'update_receipts') {
+            $session = requireAuth();
+            $chkStmt = $pdo->prepare("SELECT created_by FROM `expense_requests` WHERE id = ?");
+            $chkStmt->execute([$id]);
+            $chk = $chkStmt->fetch();
+            if (!$chk) jsonError('Not found', 404);
+            if ($session['role'] !== 'admin' && (int)$chk['created_by'] !== (int)$session['user_id']) {
+                jsonError('ไม่มีสิทธิ์แก้ไขรายการนี้', 403);
+            }
+            $images = array_values($body['receipt_images'] ?? []);
+            $pdo->prepare("UPDATE `expense_requests` SET receipt_images = ? WHERE id = ?")
+                ->execute([!empty($images) ? json_encode($images) : null, $id]);
             $stmt = $pdo->prepare(LIST_SQL . " WHERE er.id = ?");
             $stmt->execute([$id]);
             jsonResponse(formatExpense($stmt->fetch()));

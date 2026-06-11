@@ -3,7 +3,7 @@ import { api, ExpenseRequest, ExpenseItem, formatMoney } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import {
   Plus, Check, X, Eye, Download, Trash2, Pencil,
-  Clock, CheckCircle2, XCircle, FileText, Printer, UserPen,
+  Clock, CheckCircle2, XCircle, FileText, Printer, UserPen, Paperclip, Image,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
@@ -25,7 +25,7 @@ function formatThaiDateTime(dateStr: string) {
   return format(new Date(dateStr), 'd MMMM yyyy HH:mm', { locale: th });
 }
 
-function printReport(req: ExpenseRequest, items: ExpenseItem[]) {
+export function printReport(req: ExpenseRequest, items: ExpenseItem[]) {
   const reqSig  = req.requester_signature;
   const appSig  = req.approver_signature;
   const now     = format(new Date(), 'dd/MM/yyyy HH:mm');
@@ -38,6 +38,19 @@ function printReport(req: ExpenseRequest, items: ExpenseItem[]) {
       <td class="c">${item.quantity ?? 1}</td>
       <td class="r">${formatMoney(item.price * (item.quantity ?? 1))}</td>
     </tr>`).join('');
+
+  const receiptsHtml = req.receipt_images && req.receipt_images.length > 0
+    ? `<div class="receipts-section">
+        <h4 class="sec-title">หลักฐานการใช้จ่าย (${req.receipt_images.length} รายการ)</h4>
+        <div class="receipts-grid">
+          ${req.receipt_images.map((img, i) => `
+            <div class="receipt-thumb">
+              <img src="${img}" alt="ใบเสร็จ ${i + 1}">
+              <p>หลักฐาน ${i + 1}</p>
+            </div>`).join('')}
+        </div>
+      </div>`
+    : '';
 
   const html = `<!DOCTYPE html>
 <html lang="th">
@@ -75,6 +88,12 @@ tfoot td{background:#f3f4f6;font-weight:700}
 .sig-name{font-size:12pt;font-weight:600;margin-top:4px}
 .sig-dept{font-size:10pt;color:#666;margin-top:2px}
 .sig-date{font-size:10pt;color:#666;margin-top:2px}
+.receipts-section{margin-top:28px;border-top:1.5px solid #ddd;padding-top:14px;page-break-inside:avoid}
+.sec-title{font-size:11pt;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.04em;margin-bottom:12px}
+.receipts-grid{display:flex;flex-wrap:wrap;gap:12px}
+.receipt-thumb{text-align:center}
+.receipt-thumb img{max-width:160px;max-height:200px;object-fit:contain;border:1px solid #ddd;border-radius:6px;padding:4px;display:block}
+.receipt-thumb p{font-size:9pt;color:#888;margin-top:4px}
 .footer{margin-top:28px;text-align:center;font-size:9pt;color:#999;border-top:1px solid #ddd;padding-top:10px}
 </style>
 </head>
@@ -130,6 +149,7 @@ ${req.description ? `<div class="desc-box"><strong>รายละเอีย�
     <div class="sig-date">วันที่อนุมัติ: ${req.approved_at ? formatThaiDate(req.approved_at) : '-'}</div>
   </div>
 </div>
+${receiptsHtml}
 <div class="footer">พิมพ์จากระบบ CMRU FinancePro &bull; ${now}</div>
 </body>
 </html>`;
@@ -139,7 +159,6 @@ ${req.description ? `<div class="desc-box"><strong>รายละเอีย�
     popup.document.write(html);
     popup.document.close();
     popup.focus();
-    // Give fonts time to load before printing
     setTimeout(() => popup.print(), 800);
   }
 }
@@ -157,6 +176,121 @@ const STATUS_CLASS: Record<string, string> = {
   approved: 'bg-green-100 text-green-700',
   rejected: 'bg-red-100 text-red-700',
 };
+
+// ─── Receipt Uploader ─────────────────────────────────────────────────────────
+
+export function ReceiptUploader({ images, onChange }: {
+  images: string[];
+  onChange: (imgs: string[]) => void;
+}) {
+  const handleFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    let loaded = 0;
+    const newImgs: string[] = [];
+    if (files.length === 0) return;
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        newImgs.push(reader.result as string);
+        loaded++;
+        if (loaded === files.length) {
+          onChange([...images, ...newImgs]);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <label className="text-sm font-bold text-slate-700 flex items-center gap-1.5">
+          <Paperclip className="w-4 h-4 text-slate-400" /> แนบใบเสร็จ / สลิป
+        </label>
+        <label className="cursor-pointer inline-flex items-center gap-1 text-blue-600 hover:text-blue-700 text-sm font-semibold">
+          <Plus className="w-4 h-4" /> เลือกรูปภาพ
+          <input type="file" accept="image/*" multiple className="hidden" onChange={handleFiles} />
+        </label>
+      </div>
+      {images.length > 0 ? (
+        <div className="flex flex-wrap gap-2 p-3 bg-slate-50 rounded-lg border border-slate-200">
+          {images.map((img, idx) => (
+            <div key={idx} className="relative group">
+              <img src={img} alt={`receipt-${idx + 1}`}
+                className="w-20 h-20 object-cover rounded-lg border border-slate-200 cursor-pointer"
+                onClick={() => window.open(img, '_blank')} />
+              <button
+                type="button"
+                onClick={() => onChange(images.filter((_, i) => i !== idx))}
+                className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity shadow"
+              >
+                ×
+              </button>
+              <span className="absolute bottom-0.5 left-0 right-0 text-[9px] text-center text-white bg-black/40 rounded-b-lg py-0.5">
+                {idx + 1}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-slate-200 rounded-lg p-4 text-slate-400 text-sm cursor-pointer hover:border-blue-300 hover:text-blue-400 transition-colors">
+          <Image className="w-6 h-6" />
+          <span>คลิกเพื่อเลือกรูปใบเสร็จ / สลิป</span>
+          <input type="file" accept="image/*" multiple className="hidden" onChange={handleFiles} />
+        </label>
+      )}
+      {images.length > 0 && (
+        <p className="text-xs text-slate-400 mt-1">{images.length} รูปภาพ — คลิกรูปเพื่อดูขยาย</p>
+      )}
+    </div>
+  );
+}
+
+// ─── Receipt Viewer ───────────────────────────────────────────────────────────
+
+export function ReceiptViewer({ images }: { images?: string[] }) {
+  const [viewing, setViewing] = useState<string | null>(null);
+  if (!images || images.length === 0) return null;
+
+  return (
+    <div>
+      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1">
+        <Paperclip className="w-3 h-3" /> ใบเสร็จ / สลิปแนบ ({images.length} รายการ)
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {images.map((img, idx) => (
+          <button key={idx} type="button" onClick={() => setViewing(img)}
+            className="relative group">
+            <img src={img} alt={`receipt-${idx + 1}`}
+              className="w-20 h-20 object-cover rounded-lg border border-slate-200 hover:border-blue-400 transition-colors" />
+            <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/25 rounded-lg transition-colors">
+              <Eye className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+            </div>
+            <span className="absolute bottom-0.5 left-0 right-0 text-[9px] text-center text-white bg-black/40 rounded-b-lg py-0.5">
+              {idx + 1}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {viewing && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80"
+          onClick={() => setViewing(null)}>
+          <div className="relative">
+            <img src={viewing} alt="receipt"
+              className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-2xl" />
+            <button
+              onClick={() => setViewing(null)}
+              className="absolute -top-3 -right-3 bg-white text-slate-700 rounded-full w-8 h-8 flex items-center justify-center shadow-lg font-bold text-lg hover:bg-slate-100">
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─── Reusable item-row editor ─────────────────────────────────────────────────
 
@@ -240,6 +374,7 @@ export function ExpenseRequests() {
   const [createItems,  setCreateItems]  = useState<ItemDraft[]>([{ name: '', price: 0, quantity: 1 }]);
   const [reqSigName,   setReqSigName]   = useState('');
   const [reqSigData,   setReqSigData]   = useState<string | null>(null);
+  const [createReceipts, setCreateReceipts] = useState<string[]>([]);
 
   // ── Edit modal ──
   const [editOpen,  setEditOpen]  = useState(false);
@@ -258,6 +393,11 @@ export function ExpenseRequests() {
   const [editReqName,     setEditReqName]     = useState('');
   const [editReqSig,      setEditReqSig]      = useState<string | null>(null);
   const [editReqLoading,  setEditReqLoading]  = useState(false);
+
+  // ── Edit-receipts modal ──
+  const [editReceiptsOpen,    setEditReceiptsOpen]    = useState(false);
+  const [editReceiptsData,    setEditReceiptsData]    = useState<string[]>([]);
+  const [editReceiptsLoading, setEditReceiptsLoading] = useState(false);
 
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -288,6 +428,7 @@ export function ExpenseRequests() {
     setCreateItems([{ name: '', price: 0, quantity: 1 }]);
     setReqSigName(user?.name ?? '');
     setReqSigData(null);
+    setCreateReceipts([]);
     setCreateOpen(true);
   };
 
@@ -303,6 +444,7 @@ export function ExpenseRequests() {
         items: validItems.map(i => ({ name: i.name, price: i.price, quantity: i.quantity || 1 })),
         requester_name:      reqSigName || undefined,
         requester_signature: reqSigData || undefined,
+        receipt_images:      createReceipts.length > 0 ? createReceipts : undefined,
       });
       await loadRequests();
       setCreateOpen(false);
@@ -376,8 +518,6 @@ export function ExpenseRequests() {
     if (!selectedReq) return;
     setEditReqLoading(true);
     try {
-      // Only send requester_signature when a new one was actually drawn
-      // — sending undefined would erase the existing signature on the server
       const payload: Parameters<typeof api.expenseRequests.updateRequester>[1] = {
         requester_name: editReqName,
       };
@@ -385,7 +525,6 @@ export function ExpenseRequests() {
         payload.requester_signature = editReqSig;
       }
       const updated = await api.expenseRequests.updateRequester(selectedReq.id, payload);
-      // Preserve items that aren't returned by updateRequester
       setSelectedReq(prev => prev ? { ...prev, ...updated } : updated);
       await loadRequests();
       setEditReqOpen(false);
@@ -393,6 +532,28 @@ export function ExpenseRequests() {
       alert(err instanceof Error ? err.message : 'บันทึกล้มเหลว');
     } finally {
       setEditReqLoading(false);
+    }
+  };
+
+  // ── Edit receipts ──
+  const openEditReceipts = () => {
+    if (!selectedReq) return;
+    setEditReceiptsData(selectedReq.receipt_images || []);
+    setEditReceiptsOpen(true);
+  };
+
+  const handleSaveReceipts = async () => {
+    if (!selectedReq) return;
+    setEditReceiptsLoading(true);
+    try {
+      const updated = await api.expenseRequests.updateReceipts(selectedReq.id, editReceiptsData);
+      setSelectedReq(prev => prev ? { ...prev, ...updated } : updated);
+      await loadRequests();
+      setEditReceiptsOpen(false);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'บันทึกล้มเหลว');
+    } finally {
+      setEditReceiptsLoading(false);
     }
   };
 
@@ -413,7 +574,6 @@ export function ExpenseRequests() {
     if (!selectedReq || !isApprover) return;
     try {
       const updated = await api.expenseRequests.updateStatus(selectedReq.id, status);
-      // Keep modal open so admin can still edit name/signature after approving
       setSelectedReq(prev => prev ? { ...prev, ...updated } : updated);
       await loadRequests();
     } catch (err) {
@@ -506,8 +666,13 @@ export function ExpenseRequests() {
                 </tr>
               ) : filtered.map(req => (
                 <tr key={req.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-6 py-4 font-semibold text-slate-900 max-w-[200px] truncate">
-                    {req.title}
+                  <td className="px-6 py-4 font-semibold text-slate-900 max-w-[200px]">
+                    <div className="truncate">{req.title}</div>
+                    {(req.receipt_images?.length ?? 0) > 0 && (
+                      <span className="inline-flex items-center gap-1 text-[10px] text-slate-400 mt-0.5">
+                        <Paperclip className="w-3 h-3" /> {req.receipt_images!.length} ใบเสร็จ
+                      </span>
+                    )}
                   </td>
                   <td className="px-6 py-4 text-slate-600">
                     {req.requester_name || req.creator_name || '—'}
@@ -570,6 +735,11 @@ export function ExpenseRequests() {
                 className="input-base" />
             </Field>
             <ItemEditor items={createItems} onChange={setCreateItems} />
+
+            {/* Receipt attachment */}
+            <div className="pt-2 border-t border-slate-100">
+              <ReceiptUploader images={createReceipts} onChange={setCreateReceipts} />
+            </div>
 
             {/* Signature section */}
             <div className="pt-2 border-t border-slate-100 space-y-3">
@@ -726,6 +896,13 @@ export function ExpenseRequests() {
             </div>
           )}
 
+          {/* Receipt images */}
+          {(selectedReq.receipt_images?.length ?? 0) > 0 && (
+            <div className="mb-5 p-3 bg-amber-50 border border-amber-100 rounded-lg">
+              <ReceiptViewer images={selectedReq.receipt_images} />
+            </div>
+          )}
+
           {/* Actions */}
           <div className="flex flex-wrap justify-between gap-3 pt-2 border-t border-slate-100">
             <div className="flex flex-wrap gap-2">
@@ -742,10 +919,19 @@ export function ExpenseRequests() {
                 </button>
               )}
               {(isAdmin || selectedReq.created_by === user?.id) && (
-                <button onClick={openEditRequester}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg text-sm font-semibold hover:bg-amber-100">
-                  <UserPen className="w-4 h-4" /> แก้ไขชื่อ/ลายเซ็น
-                </button>
+                <>
+                  <button onClick={openEditRequester}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg text-sm font-semibold hover:bg-amber-100">
+                    <UserPen className="w-4 h-4" /> แก้ไขชื่อ/ลายเซ็น
+                  </button>
+                  <button onClick={openEditReceipts}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg text-sm font-semibold hover:bg-blue-100">
+                    <Paperclip className="w-4 h-4" />
+                    {(selectedReq.receipt_images?.length ?? 0) > 0
+                      ? `ใบเสร็จ (${selectedReq.receipt_images!.length})`
+                      : 'แนบใบเสร็จ'}
+                  </button>
+                </>
               )}
             </div>
 
@@ -801,6 +987,26 @@ export function ExpenseRequests() {
               </button>
             </div>
           </form>
+        </Modal>
+      )}
+
+      {/* ── Edit Receipts Modal ──────────────────────────────────────────────────── */}
+      {editReceiptsOpen && selectedReq && (
+        <Modal title="แนบใบเสร็จ / สลิป" onClose={() => setEditReceiptsOpen(false)}>
+          <div className="space-y-4">
+            <p className="text-sm text-slate-500">
+              เพิ่มหรือลบใบเสร็จ/สลิปสำหรับรายการนี้ได้ทุกเมื่อ ไม่จำกัดสถานะ
+            </p>
+            <ReceiptUploader images={editReceiptsData} onChange={setEditReceiptsData} />
+            <div className="flex justify-end gap-3 pt-2">
+              <button type="button" onClick={() => setEditReceiptsOpen(false)}
+                className="btn-secondary">ยกเลิก</button>
+              <button type="button" disabled={editReceiptsLoading} onClick={handleSaveReceipts}
+                className="btn-primary">
+                {editReceiptsLoading ? 'กำลังบันทึก...' : 'บันทึก'}
+              </button>
+            </div>
+          </div>
         </Modal>
       )}
     </div>

@@ -112,6 +112,7 @@ export interface ExpenseRequest {
   approver_name?: string | null;
   approver_dept?: string | null;
   approver_signature?: string | null;
+  receipt_images?: string[];
 }
 
 export interface ExpenseItem {
@@ -312,6 +313,7 @@ export const api = {
       items: { name: string; price: number; quantity: number }[];
       requester_name?: string;
       requester_signature?: string | null;
+      receipt_images?: string[];
     }) => request<ExpenseRequest>('POST', '/expense_requests.php', data),
 
     update: (id: number, data: {
@@ -328,6 +330,9 @@ export const api = {
 
     updateRequester: (id: number, data: { requester_name?: string; requester_signature?: string | null }) =>
       request<ExpenseRequest>('PATCH', `/expense_requests.php?id=${id}`, { action: 'update_requester', ...data }),
+
+    updateReceipts: (id: number, images: string[]) =>
+      request<ExpenseRequest>('PATCH', `/expense_requests.php?id=${id}`, { action: 'update_receipts', receipt_images: images }),
   },
 
   budget: {

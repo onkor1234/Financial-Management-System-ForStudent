@@ -143,6 +143,7 @@ try { $pdo->exec("ALTER TABLE `users` ADD COLUMN `can_approve_expenses` TINYINT(
 try { $pdo->exec("ALTER TABLE `expense_requests` ADD COLUMN `requester_name` VARCHAR(200) DEFAULT NULL"); } catch (PDOException $e) {}
 try { $pdo->exec("ALTER TABLE `expense_requests` ADD COLUMN `requester_signature` LONGTEXT DEFAULT NULL"); } catch (PDOException $e) {}
 try { $pdo->exec("ALTER TABLE `expense_requests` ADD COLUMN `approved_at` TIMESTAMP NULL DEFAULT NULL"); } catch (PDOException $e) {}
+try { $pdo->exec("ALTER TABLE `expense_requests` ADD COLUMN `receipt_images` LONGTEXT DEFAULT NULL"); } catch (PDOException $e) {}
 
 // ─── Seed: insert default users only when the table is empty ─────────────────
 
