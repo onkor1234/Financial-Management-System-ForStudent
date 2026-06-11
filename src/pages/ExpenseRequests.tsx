@@ -1,64 +1,305 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { api, ExpenseRequest, ExpenseItem, formatMoney } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
-import { Plus, Check, X, Eye, Download, Trash2, Pencil } from 'lucide-react';
+import {
+  Plus, Check, X, Eye, Download, Trash2, Pencil,
+  Clock, CheckCircle2, XCircle, FileText, Printer,
+} from 'lucide-react';
 import { format } from 'date-fns';
+import { th } from 'date-fns/locale';
 import * as XLSX from 'xlsx';
+import { SignatureCanvas } from '../components/SignatureCanvas';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type Tab = 'all' | 'pending' | 'approved' | 'rejected';
+type ItemDraft = { name: string; price: number; quantity: number };
+
+// ─── Print / PDF helper ───────────────────────────────────────────────────────
+
+function formatThaiDate(dateStr: string) {
+  return format(new Date(dateStr), 'd MMMM yyyy', { locale: th });
+}
+
+function formatThaiDateTime(dateStr: string) {
+  return format(new Date(dateStr), 'd MMMM yyyy HH:mm', { locale: th });
+}
+
+function printReport(req: ExpenseRequest, items: ExpenseItem[]) {
+  const reqSig  = req.requester_signature;
+  const appSig  = req.approver_signature;
+  const now     = format(new Date(), 'dd/MM/yyyy HH:mm');
+
+  const rowsHtml = items.map((item, idx) => `
+    <tr>
+      <td class="c">${idx + 1}</td>
+      <td>${item.item_name}</td>
+      <td class="r">${formatMoney(item.price)}</td>
+      <td class="c">${item.quantity ?? 1}</td>
+      <td class="r">${formatMoney(item.price * (item.quantity ?? 1))}</td>
+    </tr>`).join('');
+
+  const html = `<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>ใบเบิกจ่ายเงิน #${String(req.id).padStart(5, '0')}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Sarabun',sans-serif;font-size:13pt;color:#111;background:#fff;padding:2cm}
+@media print{body{padding:1.2cm}}
+.hd{text-align:center;margin-bottom:18px}
+.hd h1{font-size:17pt;font-weight:700}
+.hd p{font-size:11pt;color:#555;margin-top:3px}
+hr{border:none;border-top:2.5px solid #111;margin:14px 0}
+.doc-title{text-align:center;font-size:16pt;font-weight:700;margin:12px 0}
+.meta{display:grid;grid-template-columns:1fr 1fr;gap:6px 20px;margin:14px 0;font-size:12pt}
+.meta dt{font-weight:700;color:#555;font-size:10pt;text-transform:uppercase;letter-spacing:.04em}
+.meta dd{margin:2px 0 8px}
+.badge{display:inline-block;padding:2px 10px;border-radius:20px;font-size:10pt;font-weight:700;background:#dcfce7;color:#15803d}
+.desc-box{border:1px solid #ccc;border-radius:6px;padding:10px 14px;margin:10px 0;font-size:12pt}
+table{width:100%;border-collapse:collapse;margin:14px 0;font-size:12pt}
+th,td{border:1px solid #888;padding:7px 10px}
+th{background:#f3f4f6;font-weight:700;text-align:center}
+td.c{text-align:center}
+td.r{text-align:right}
+tfoot td{background:#f3f4f6;font-weight:700}
+.sig-section{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-top:36px}
+.sig-box{border:1px solid #bbb;border-radius:6px;padding:12px 14px}
+.sig-box h4{font-size:10pt;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#555;margin-bottom:8px}
+.sig-area{height:88px;display:flex;align-items:center;justify-content:center;margin-bottom:6px}
+.sig-area img{max-height:84px;max-width:220px;object-fit:contain}
+.sig-line{width:100%;border-bottom:1px solid #444;height:84px}
+.sig-name{font-size:12pt;font-weight:600;margin-top:4px}
+.sig-dept{font-size:10pt;color:#666;margin-top:2px}
+.sig-date{font-size:10pt;color:#666;margin-top:2px}
+.footer{margin-top:28px;text-align:center;font-size:9pt;color:#999;border-top:1px solid #ddd;padding-top:10px}
+</style>
+</head>
+<body>
+<div class="hd">
+  <h1>มหาวิทยาลัยราชภัฏเชียงใหม่</h1>
+  <p>คณะวิทยาศาสตร์และเทคโนโลยี</p>
+</div>
+<hr>
+<div class="doc-title">ใบเบิกจ่ายเงิน</div>
+<dl class="meta">
+  <div><dt>เลขที่</dt><dd>#${String(req.id).padStart(5, '0')}</dd></div>
+  <div><dt>สถานะ</dt><dd><span class="badge">อนุมัติแล้ว</span></dd></div>
+  <div><dt>ชื่อรายการ</dt><dd>${req.title}</dd></div>
+  <div><dt>วันที่สร้าง</dt><dd>${formatThaiDate(req.created_at)}</dd></div>
+</dl>
+${req.description ? `<div class="desc-box"><strong>รายละเอียด:</strong> ${req.description}</div>` : ''}
+<table>
+  <thead>
+    <tr>
+      <th style="width:38px">#</th>
+      <th>รายการ</th>
+      <th style="width:130px">ราคา/หน่วย (฿)</th>
+      <th style="width:72px">จำนวน</th>
+      <th style="width:140px">รวม (฿)</th>
+    </tr>
+  </thead>
+  <tbody>${rowsHtml}</tbody>
+  <tfoot>
+    <tr>
+      <td colspan="4" class="r" style="padding-right:10px">ยอดรวมทั้งสิ้น</td>
+      <td class="r">฿${formatMoney(req.total_amount)}</td>
+    </tr>
+  </tfoot>
+</table>
+<div class="sig-section">
+  <div class="sig-box">
+    <h4>ผู้ขอเบิกเงิน</h4>
+    <div class="sig-area">
+      ${reqSig ? `<img src="${reqSig}" alt="ลายเซ็น">` : '<div class="sig-line"></div>'}
+    </div>
+    <div class="sig-name">(${req.requester_name || req.creator_name || ''})</div>
+    ${req.creator_dept ? `<div class="sig-dept">ตำแหน่ง: ${req.creator_dept}</div>` : ''}
+    <div class="sig-date">วันที่: ${formatThaiDate(req.created_at)}</div>
+  </div>
+  <div class="sig-box">
+    <h4>ผู้อนุมัติ</h4>
+    <div class="sig-area">
+      ${appSig ? `<img src="${appSig}" alt="ลายเซ็น">` : '<div class="sig-line"></div>'}
+    </div>
+    <div class="sig-name">(${req.approver_name || ''})</div>
+    ${req.approver_dept ? `<div class="sig-dept">ตำแหน่ง: ${req.approver_dept}</div>` : ''}
+    <div class="sig-date">วันที่อนุมัติ: ${req.approved_at ? formatThaiDate(req.approved_at) : '-'}</div>
+  </div>
+</div>
+<div class="footer">พิมพ์จากระบบ CMRU FinancePro &bull; ${now}</div>
+</body>
+</html>`;
+
+  const popup = window.open('', '_blank', 'width=860,height=720,scrollbars=yes');
+  if (popup) {
+    popup.document.write(html);
+    popup.document.close();
+    popup.focus();
+    // Give fonts time to load before printing
+    setTimeout(() => popup.print(), 800);
+  }
+}
+
+// ─── Status helpers ───────────────────────────────────────────────────────────
+
+const STATUS_LABEL: Record<string, string> = {
+  pending:  'รออนุมัติ',
+  approved: 'อนุมัติแล้ว',
+  rejected: 'ปฏิเสธแล้ว',
+};
+
+const STATUS_CLASS: Record<string, string> = {
+  pending:  'bg-amber-100 text-amber-700',
+  approved: 'bg-green-100 text-green-700',
+  rejected: 'bg-red-100 text-red-700',
+};
+
+// ─── Reusable item-row editor ─────────────────────────────────────────────────
+
+function ItemEditor({
+  items, onChange,
+}: {
+  items: ItemDraft[];
+  onChange: (items: ItemDraft[]) => void;
+}) {
+  const add    = () => onChange([...items, { name: '', price: 0, quantity: 1 }]);
+  const remove = (i: number) => onChange(items.filter((_, idx) => idx !== i));
+  const set    = (i: number, field: keyof ItemDraft, val: string | number) => {
+    const next = [...items];
+    if (field === 'name')     next[i].name     = val as string;
+    else if (field === 'price')    next[i].price    = val as number;
+    else                           next[i].quantity = val as number;
+    onChange(next);
+  };
+  const total = items.reduce((s, i) => s + (i.price || 0) * (i.quantity || 1), 0);
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-2">
+        <label className="block text-sm font-bold text-slate-700">รายการสิ่งของ</label>
+        <button type="button" onClick={add}
+          className="text-blue-600 hover:text-blue-700 text-sm font-bold flex items-center">
+          <Plus className="w-4 h-4 mr-1" /> เพิ่มรายการ
+        </button>
+      </div>
+      <div className="space-y-2 border border-slate-200 rounded-md p-3 bg-slate-50 max-h-64 overflow-y-auto">
+        <div className="flex space-x-2 items-center text-[10px] font-bold text-slate-500 uppercase px-1">
+          <span className="flex-1">รายการ</span>
+          <span className="w-24 text-center">ราคา/หน่วย (฿)</span>
+          <span className="w-16 text-center">จำนวน</span>
+          <span className="w-24 text-right">รวม (฿)</span>
+          <span className="w-6" />
+        </div>
+        {items.map((item, idx) => (
+          <div key={idx} className="flex space-x-2 items-center">
+            <input type="text" placeholder="ชื่อสิ่งของ/รายการ" required value={item.name}
+              onChange={e => set(idx, 'name', e.target.value)}
+              className="flex-1 px-3 py-2 border border-slate-300 rounded-md text-sm text-slate-800" />
+            <input type="number" placeholder="ราคา" required min="0.01" step="0.01" value={item.price || ''}
+              onChange={e => set(idx, 'price', parseFloat(e.target.value) || 0)}
+              className="w-24 px-3 py-2 border border-slate-300 rounded-md text-sm text-slate-800" />
+            <input type="number" placeholder="จำนวน" required min="1" step="1" value={item.quantity || 1}
+              onChange={e => set(idx, 'quantity', parseInt(e.target.value) || 1)}
+              className="w-16 px-3 py-2 border border-slate-300 rounded-md text-sm text-slate-800 text-center" />
+            <span className="w-24 text-right text-sm font-semibold text-blue-700">
+              ฿{formatMoney((item.price || 0) * (item.quantity || 1))}
+            </span>
+            <button type="button" onClick={() => remove(idx)} className="p-1.5 text-slate-400 hover:text-red-500">
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        ))}
+      </div>
+      <div className="mt-2 text-right">
+        <span className="text-sm font-bold text-slate-700">ยอดรวม: ฿{formatMoney(total)}</span>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
 
 export function ExpenseRequests() {
-  const { user }                                = useAuth();
-  const [requests, setRequests]                 = useState<ExpenseRequest[]>([]);
-  const [isModalOpen, setIsModalOpen]           = useState(false);
-  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
-  const [loading, setLoading]                   = useState(false);
+  const { user } = useAuth();
 
-  const [title, setTitle]               = useState('');
-  const [description, setDescription]   = useState('');
-  const [items, setItems]               = useState<{ name: string; price: number; quantity: number }[]>([{ name: '', price: 0, quantity: 1 }]);
+  const isAdmin    = user?.role === 'admin';
+  const isApprover = isAdmin || !!user?.can_approve_expenses;
 
-  const [selectedReq, setSelectedReq]     = useState<ExpenseRequest | null>(null);
+  const [requests, setRequests] = useState<ExpenseRequest[]>([]);
+  const [tab, setTab]           = useState<Tab>('all');
+  const [loading, setLoading]   = useState(false);
+
+  // ── Create modal ──
+  const [createOpen,   setCreateOpen]   = useState(false);
+  const [createTitle,  setCreateTitle]  = useState('');
+  const [createDesc,   setCreateDesc]   = useState('');
+  const [createItems,  setCreateItems]  = useState<ItemDraft[]>([{ name: '', price: 0, quantity: 1 }]);
+  const [reqSigName,   setReqSigName]   = useState('');
+  const [reqSigData,   setReqSigData]   = useState<string | null>(null);
+
+  // ── Edit modal ──
+  const [editOpen,  setEditOpen]  = useState(false);
+  const [editReq,   setEditReq]   = useState<ExpenseRequest | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDesc,  setEditDesc]  = useState('');
+  const [editItems, setEditItems] = useState<ItemDraft[]>([]);
+
+  // ── Details modal ──
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [selectedReq,   setSelectedReq]   = useState<ExpenseRequest | null>(null);
   const [selectedItems, setSelectedItems] = useState<ExpenseItem[]>([]);
 
-  const [editReq, setEditReq]             = useState<ExpenseRequest | null>(null);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  // ─────────────────────────────────────────────────────────────────────────
 
-  useEffect(() => { loadRequests(); }, []);
+  const loadRequests = useCallback(async () => {
+    try { setRequests(await api.expenseRequests.list()); }
+    catch (err) { alert(err instanceof Error ? err.message : 'โหลดข้อมูลล้มเหลว'); }
+  }, []);
 
-  const loadRequests = async () => {
-    try {
-      setRequests(await api.expenseRequests.list());
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'โหลดข้อมูลล้มเหลว');
-    }
-  };
+  useEffect(() => { loadRequests(); }, [loadRequests]);
 
-  const handleAddItem    = () => setItems([...items, { name: '', price: 0, quantity: 1 }]);
-  const handleRemoveItem = (i: number) => setItems(items.filter((_, idx) => idx !== i));
-  const handleItemChange = (i: number, field: 'name' | 'price' | 'quantity', value: string | number) => {
-    const next = [...items];
-    if (field === 'name')          next[i].name     = value as string;
-    else if (field === 'price')    next[i].price    = value as number;
-    else                           next[i].quantity = value as number;
-    setItems(next);
+  // ── Stats ──
+  const pendingReqs  = requests.filter(r => r.status === 'pending');
+  const approvedReqs = requests.filter(r => r.status === 'approved');
+  const rejectedReqs = requests.filter(r => r.status === 'rejected');
+
+  const pendingTotal  = pendingReqs.reduce((s, r)  => s + r.total_amount, 0);
+  const approvedTotal = approvedReqs.reduce((s, r) => s + r.total_amount, 0);
+
+  const filtered = tab === 'all'      ? requests
+                 : tab === 'pending'  ? pendingReqs
+                 : tab === 'approved' ? approvedReqs
+                 : rejectedReqs;
+
+  // ── Create ──
+  const openCreate = () => {
+    setCreateTitle('');
+    setCreateDesc('');
+    setCreateItems([{ name: '', price: 0, quantity: 1 }]);
+    setReqSigName(user?.name ?? '');
+    setReqSigData(null);
+    setCreateOpen(true);
   };
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
-    const validItems = items.filter(i => i.name.trim() !== '' && i.price > 0);
+    const validItems = createItems.filter(i => i.name.trim() !== '' && i.price > 0);
     if (validItems.length === 0) { alert('กรุณาเพิ่มรายการสิ่งของอย่างน้อย 1 รายการ'); return; }
     setLoading(true);
     try {
       await api.expenseRequests.create({
-        title,
-        description,
+        title: createTitle,
+        description: createDesc,
         items: validItems.map(i => ({ name: i.name, price: i.price, quantity: i.quantity || 1 })),
+        requester_name:      reqSigName || undefined,
+        requester_signature: reqSigData || undefined,
       });
       await loadRequests();
-      setIsModalOpen(false);
-      setTitle('');
-      setDescription('');
-      setItems([{ name: '', price: 0, quantity: 1 }]);
+      setCreateOpen(false);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'สร้างรายการล้มเหลว');
     } finally {
@@ -66,63 +307,34 @@ export function ExpenseRequests() {
     }
   };
 
-  const openDetails = async (req: ExpenseRequest) => {
-    try {
-      const details = await api.expenseRequests.getDetails(req.id);
-      setSelectedReq(details);
-      setSelectedItems(details.items);
-      setIsDetailsModalOpen(true);
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'โหลดรายละเอียดล้มเหลว');
-    }
-  };
-
-  const handleAction = async (status: 'approved' | 'rejected') => {
-    if (!selectedReq || !user || user.role !== 'admin') return;
-    try {
-      await api.expenseRequests.updateStatus(selectedReq.id, status);
-      await loadRequests();
-      setIsDetailsModalOpen(false);
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'ดำเนินการล้มเหลว');
-    }
-  };
-
+  // ── Edit ──
   const openEdit = async (req: ExpenseRequest) => {
     try {
       const details = await api.expenseRequests.getDetails(req.id);
       setEditReq(req);
-      setTitle(details.title);
-      setDescription(details.description ?? '');
-      setItems(details.items.map(i => ({ name: i.item_name, price: i.price, quantity: i.quantity ?? 1 })));
-      setIsEditModalOpen(true);
+      setEditTitle(details.title);
+      setEditDesc(details.description ?? '');
+      setEditItems(details.items.map(i => ({ name: i.item_name, price: i.price, quantity: i.quantity ?? 1 })));
+      setEditOpen(true);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'โหลดรายละเอียดล้มเหลว');
     }
-  };
-
-  const closeEditModal = () => {
-    setIsEditModalOpen(false);
-    setEditReq(null);
-    setTitle('');
-    setDescription('');
-    setItems([{ name: '', price: 0, quantity: 1 }]);
   };
 
   const handleEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editReq) return;
-    const validItems = items.filter(i => i.name.trim() !== '' && i.price > 0);
+    const validItems = editItems.filter(i => i.name.trim() !== '' && i.price > 0);
     if (validItems.length === 0) { alert('กรุณาเพิ่มรายการสิ่งของอย่างน้อย 1 รายการ'); return; }
     setLoading(true);
     try {
       await api.expenseRequests.update(editReq.id, {
-        title,
-        description,
+        title: editTitle,
+        description: editDesc,
         items: validItems.map(i => ({ name: i.name, price: i.price, quantity: i.quantity || 1 })),
       });
       await loadRequests();
-      closeEditModal();
+      setEditOpen(false);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'แก้ไขรายการล้มเหลว');
     } finally {
@@ -130,6 +342,7 @@ export function ExpenseRequests() {
     }
   };
 
+  // ── Delete ──
   const handleDelete = async (req: ExpenseRequest) => {
     if (!confirm(`ยืนยันลบรายการ "${req.title}" ?`)) return;
     try {
@@ -140,6 +353,31 @@ export function ExpenseRequests() {
     }
   };
 
+  // ── Details ──
+  const openDetails = async (req: ExpenseRequest) => {
+    try {
+      const details = await api.expenseRequests.getDetails(req.id);
+      setSelectedReq(details);
+      setSelectedItems(details.items);
+      setDetailsOpen(true);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'โหลดรายละเอียดล้มเหลว');
+    }
+  };
+
+  // ── Approve / reject ──
+  const handleAction = async (status: 'approved' | 'rejected') => {
+    if (!selectedReq || !isApprover) return;
+    try {
+      await api.expenseRequests.updateStatus(selectedReq.id, status);
+      await loadRequests();
+      setDetailsOpen(false);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'ดำเนินการล้มเหลว');
+    }
+  };
+
+  // ── Export ──
   const exportDetails = () => {
     if (!selectedReq) return;
     const ws = XLSX.utils.json_to_sheet(selectedItems.map(item => ({
@@ -153,50 +391,98 @@ export function ExpenseRequests() {
     XLSX.writeFile(wb, `${selectedReq.title}_expense.xlsx`);
   };
 
+  // ─── Render ─────────────────────────────────────────────────────────────────
+
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h1 className="text-2xl font-bold text-slate-900 tracking-tight">รายการเบิกจ่าย</h1>
-        {(user?.role === 'operation' || user?.role === 'admin') && (
-          <button onClick={() => setIsModalOpen(true)}
-            className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm shadow-blue-200 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700">
-            <Plus className="w-4 h-4 mr-2" /> สร้างรายการใหม่
-          </button>
-        )}
+        <button onClick={openCreate}
+          className="inline-flex items-center px-4 py-2 rounded-lg shadow shadow-blue-200 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 transition-colors">
+          <Plus className="w-4 h-4 mr-2" /> สร้างรายการใหม่
+        </button>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden text-sm flex flex-col">
-        <div className="flex-1 overflow-auto">
-          <table className="w-full text-left">
-            <thead className="bg-slate-50 text-xs font-bold text-slate-500 uppercase">
+      {/* Stats cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard icon={<FileText className="w-5 h-5 text-slate-500" />}
+          label="ทั้งหมด" value={`${requests.length} รายการ`}
+          sub={`฿${formatMoney(requests.reduce((s, r) => s + r.total_amount, 0))}`}
+          color="slate" />
+        <StatCard icon={<Clock className="w-5 h-5 text-amber-500" />}
+          label="รออนุมัติ" value={`${pendingReqs.length} รายการ`}
+          sub={`฿${formatMoney(pendingTotal)}`}
+          color="amber" />
+        <StatCard icon={<CheckCircle2 className="w-5 h-5 text-green-500" />}
+          label="อนุมัติแล้ว" value={`${approvedReqs.length} รายการ`}
+          sub={`฿${formatMoney(approvedTotal)}`}
+          color="green" />
+        <StatCard icon={<XCircle className="w-5 h-5 text-red-400" />}
+          label="ปฏิเสธแล้ว" value={`${rejectedReqs.length} รายการ`}
+          sub="" color="red" />
+      </div>
+
+      {/* Tabs */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="flex border-b border-slate-100 overflow-x-auto">
+          {(['all', 'pending', 'approved', 'rejected'] as Tab[]).map(t => (
+            <button key={t} onClick={() => setTab(t)}
+              className={`px-5 py-3 text-sm font-semibold whitespace-nowrap transition-colors border-b-2 ${
+                tab === t
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-slate-500 hover:text-slate-700'
+              }`}>
+              {t === 'all'      ? `ทั้งหมด (${requests.length})`
+               : t === 'pending'  ? `รออนุมัติ (${pendingReqs.length})`
+               : t === 'approved' ? `อนุมัติแล้ว (${approvedReqs.length})`
+               : `ปฏิเสธแล้ว (${rejectedReqs.length})`}
+            </button>
+          ))}
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-left">
+            <thead className="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase">
               <tr>
-                <th className="px-6 py-3 border-b border-slate-100">ชื่อรายการ</th>
-                <th className="px-6 py-3 border-b border-slate-100">จำนวนเงิน</th>
-                <th className="px-6 py-3 border-b border-slate-100">สถานะ</th>
-                <th className="px-6 py-3 border-b border-slate-100">วันที่</th>
-                <th className="px-6 py-3 border-b border-slate-100 text-right">ดำเนินการ</th>
+                <th className="px-6 py-3">ชื่อรายการ</th>
+                <th className="px-6 py-3">ผู้ขอเบิก</th>
+                <th className="px-6 py-3">จำนวนเงิน</th>
+                <th className="px-6 py-3">สถานะ</th>
+                <th className="px-6 py-3">วันที่</th>
+                <th className="px-6 py-3 text-right">ดำเนินการ</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-sm">
-              {requests.length === 0 ? (
-                <tr><td colSpan={5} className="px-6 py-4 text-center text-slate-500">ไม่พบรายการเบิกจ่าย</td></tr>
-              ) : requests.map(req => (
-                <tr key={req.id} className="hover:bg-slate-50">
-                  <td className="px-6 py-4 font-medium text-slate-900">{req.title}</td>
+            <tbody className="divide-y divide-slate-100">
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-6 py-10 text-center text-slate-400">
+                    ไม่พบรายการ
+                  </td>
+                </tr>
+              ) : filtered.map(req => (
+                <tr key={req.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-6 py-4 font-semibold text-slate-900 max-w-[200px] truncate">
+                    {req.title}
+                  </td>
+                  <td className="px-6 py-4 text-slate-600">
+                    {req.requester_name || req.creator_name || '—'}
+                    {req.creator_dept && (
+                      <span className="block text-[11px] text-slate-400">{req.creator_dept}</span>
+                    )}
+                  </td>
                   <td className="px-6 py-4 font-bold text-blue-600">฿{formatMoney(req.total_amount)}</td>
                   <td className="px-6 py-4">
-                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold uppercase ${
-                      req.status === 'approved' ? 'bg-green-100 text-green-700' :
-                      req.status === 'rejected' ? 'bg-red-100 text-red-700' :
-                      'bg-amber-100 text-amber-700'
-                    }`}>
-                      {req.status === 'pending' ? 'รออนุมัติ' : req.status === 'approved' ? 'อนุมัติแล้ว' : 'ปฏิเสธแล้ว'}
+                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold ${STATUS_CLASS[req.status]}`}>
+                      {STATUS_LABEL[req.status]}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-slate-500">{format(new Date(req.created_at), 'dd MMM yyyy')}</td>
-                  <td className="px-6 py-4 text-right font-medium">
+                  <td className="px-6 py-4 text-slate-500 whitespace-nowrap">
+                    {format(new Date(req.created_at), 'dd MMM yyyy')}
+                  </td>
+                  <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      {req.status === 'pending' && (user?.role === 'admin' || req.created_by === user?.id) && (
+                      {req.status === 'pending' && (isAdmin || req.created_by === user?.id) && (
                         <>
                           <button onClick={() => openEdit(req)}
                             className="text-blue-500 hover:text-blue-700 flex items-center font-bold text-xs">
@@ -210,7 +496,8 @@ export function ExpenseRequests() {
                       )}
                       <button onClick={() => openDetails(req)}
                         className="text-slate-500 hover:text-slate-800 flex items-center font-bold text-xs">
-                        <Eye className="w-4 h-4 mr-1" /> ดูรายละเอียด
+                        <Eye className="w-4 h-4 mr-1" />
+                        {req.status === 'pending' && isApprover ? 'ตรวจสอบ' : 'ดูรายละเอียด'}
                       </button>
                     </div>
                   </td>
@@ -221,232 +508,268 @@ export function ExpenseRequests() {
         </div>
       </div>
 
-      {/* Create Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
-          <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
-            <div className="fixed inset-0 transition-opacity bg-slate-900 bg-opacity-75" onClick={() => setIsModalOpen(false)} />
-            <div className="relative inline-block w-full max-w-2xl p-6 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-xl border border-slate-200">
-              <h3 className="text-lg font-bold text-slate-900 mb-4">สร้างรายการเบิกจ่าย</h3>
-              <form onSubmit={handleCreate} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-bold text-slate-700">ชื่อรายการ</label>
-                  <input type="text" required value={title} onChange={e => setTitle(e.target.value)}
-                    className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm focus:ring-blue-500 focus:border-blue-500 text-slate-800" />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-slate-700">รายละเอียดเพิ่มเติม</label>
-                  <textarea rows={3} value={description} onChange={e => setDescription(e.target.value)}
-                    className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm focus:ring-blue-500 focus:border-blue-500 text-slate-800" />
-                </div>
-                <div className="pt-4">
-                  <div className="flex justify-between items-center mb-2">
-                    <label className="block text-sm font-bold text-slate-700">รายการสิ่งของ</label>
-                    <button type="button" onClick={handleAddItem} className="text-blue-600 hover:text-blue-700 text-sm font-bold flex items-center">
-                      <Plus className="w-4 h-4 mr-1" /> เพิ่มรายการ
-                    </button>
-                  </div>
-                  <div className="space-y-2 border border-slate-200 rounded-md p-3 bg-slate-50 max-h-64 overflow-y-auto">
-                    <div className="flex space-x-2 items-center text-[10px] font-bold text-slate-500 uppercase px-1">
-                      <span className="flex-1">รายการ</span>
-                      <span className="w-24 text-center">ราคา/หน่วย (฿)</span>
-                      <span className="w-16 text-center">จำนวน</span>
-                      <span className="w-24 text-right">รวม (฿)</span>
-                      <span className="w-6" />
-                    </div>
-                    {items.map((item, index) => (
-                      <div key={index} className="flex space-x-2 items-center">
-                        <input type="text" placeholder="ชื่อสิ่งของ/รายการ" required value={item.name}
-                          onChange={e => handleItemChange(index, 'name', e.target.value)}
-                          className="flex-1 px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm text-slate-800" />
-                        <input type="number" placeholder="ราคา" required min="0.01" step="0.01" value={item.price || ''}
-                          onChange={e => handleItemChange(index, 'price', parseFloat(e.target.value) || 0)}
-                          className="w-24 px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm text-slate-800" />
-                        <input type="number" placeholder="จำนวน" required min="1" step="1" value={item.quantity || 1}
-                          onChange={e => handleItemChange(index, 'quantity', parseInt(e.target.value) || 1)}
-                          className="w-16 px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm text-slate-800 text-center" />
-                        <span className="w-24 text-right text-sm font-semibold text-blue-700">
-                          ฿{formatMoney((item.price || 0) * (item.quantity || 1))}
-                        </span>
-                        <button type="button" onClick={() => handleRemoveItem(index)} className="p-1.5 text-slate-400 hover:text-red-500">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-2 text-right">
-                    <span className="text-sm font-bold text-slate-700">
-                      ยอดรวม: ฿{formatMoney(items.reduce((s, i) => s + (i.price || 0) * (i.quantity || 1), 0))}
-                    </span>
+      {/* ── Create Modal ────────────────────────────────────────────────────────── */}
+      {createOpen && (
+        <Modal title="สร้างรายการเบิกจ่าย" onClose={() => setCreateOpen(false)}>
+          <form onSubmit={handleCreate} className="space-y-4">
+            <Field label="ชื่อรายการ">
+              <input type="text" required value={createTitle}
+                onChange={e => setCreateTitle(e.target.value)}
+                className="input-base" />
+            </Field>
+            <Field label="รายละเอียดเพิ่มเติม">
+              <textarea rows={2} value={createDesc}
+                onChange={e => setCreateDesc(e.target.value)}
+                className="input-base" />
+            </Field>
+            <ItemEditor items={createItems} onChange={setCreateItems} />
+
+            {/* Signature section */}
+            <div className="pt-2 border-t border-slate-100 space-y-3">
+              <p className="text-sm font-bold text-slate-700">ลายเซ็นผู้ขอเบิก</p>
+              {user?.signature ? (
+                <div className="flex items-center gap-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                  <img src={user.signature} alt="ลายเซ็น" className="h-12 object-contain" />
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">{user.name}</p>
+                    <p className="text-xs text-slate-400">ใช้ลายเซ็นที่บันทึกไว้</p>
                   </div>
                 </div>
-                <div className="mt-6 flex justify-end space-x-3">
-                  <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-md text-sm font-bold hover:bg-slate-200">ยกเลิก</button>
-                  <button type="submit" disabled={loading} className="px-4 py-2 border border-transparent rounded-md shadow-sm shadow-blue-200 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60">
-                    {loading ? 'กำลังส่ง...' : 'ส่งคำขอเบิกเงิน'}
-                  </button>
+              ) : (
+                <div className="space-y-2">
+                  <Field label="ชื่อ-นามสกุลผู้ขอเบิก">
+                    <input type="text" value={reqSigName}
+                      onChange={e => setReqSigName(e.target.value)}
+                      className="input-base" placeholder="ระบุชื่อ-นามสกุล" />
+                  </Field>
+                  <SignatureCanvas
+                    onChange={setReqSigData}
+                    width={460}
+                    height={130}
+                    label="วาดลายเซ็น"
+                  />
                 </div>
-              </form>
+              )}
             </div>
-          </div>
-        </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button type="button" onClick={() => setCreateOpen(false)}
+                className="btn-secondary">ยกเลิก</button>
+              <button type="submit" disabled={loading}
+                className="btn-primary">{loading ? 'กำลังส่ง...' : 'ส่งคำขอเบิกเงิน'}</button>
+            </div>
+          </form>
+        </Modal>
       )}
 
-      {/* Edit Modal */}
-      {isEditModalOpen && editReq && (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
-          <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
-            <div className="fixed inset-0 transition-opacity bg-slate-900 bg-opacity-75" onClick={closeEditModal} />
-            <div className="relative inline-block w-full max-w-2xl p-6 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-xl border border-slate-200">
-              <h3 className="text-lg font-bold text-slate-900 mb-4">แก้ไขรายการเบิกจ่าย</h3>
-              <form onSubmit={handleEdit} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-bold text-slate-700">ชื่อรายการ</label>
-                  <input type="text" required value={title} onChange={e => setTitle(e.target.value)}
-                    className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm focus:ring-blue-500 focus:border-blue-500 text-slate-800" />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-slate-700">รายละเอียดเพิ่มเติม</label>
-                  <textarea rows={3} value={description} onChange={e => setDescription(e.target.value)}
-                    className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm focus:ring-blue-500 focus:border-blue-500 text-slate-800" />
-                </div>
-                <div className="pt-4">
-                  <div className="flex justify-between items-center mb-2">
-                    <label className="block text-sm font-bold text-slate-700">รายการสิ่งของ</label>
-                    <button type="button" onClick={handleAddItem} className="text-blue-600 hover:text-blue-700 text-sm font-bold flex items-center">
-                      <Plus className="w-4 h-4 mr-1" /> เพิ่มรายการ
-                    </button>
-                  </div>
-                  <div className="space-y-2 border border-slate-200 rounded-md p-3 bg-slate-50 max-h-64 overflow-y-auto">
-                    <div className="flex space-x-2 items-center text-[10px] font-bold text-slate-500 uppercase px-1">
-                      <span className="flex-1">รายการ</span>
-                      <span className="w-24 text-center">ราคา/หน่วย (฿)</span>
-                      <span className="w-16 text-center">จำนวน</span>
-                      <span className="w-24 text-right">รวม (฿)</span>
-                      <span className="w-6" />
-                    </div>
-                    {items.map((item, index) => (
-                      <div key={index} className="flex space-x-2 items-center">
-                        <input type="text" placeholder="ชื่อสิ่งของ/รายการ" required value={item.name}
-                          onChange={e => handleItemChange(index, 'name', e.target.value)}
-                          className="flex-1 px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm text-slate-800" />
-                        <input type="number" placeholder="ราคา" required min="0.01" step="0.01" value={item.price || ''}
-                          onChange={e => handleItemChange(index, 'price', parseFloat(e.target.value) || 0)}
-                          className="w-24 px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm text-slate-800" />
-                        <input type="number" placeholder="จำนวน" required min="1" step="1" value={item.quantity || 1}
-                          onChange={e => handleItemChange(index, 'quantity', parseInt(e.target.value) || 1)}
-                          className="w-16 px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm text-slate-800 text-center" />
-                        <span className="w-24 text-right text-sm font-semibold text-blue-700">
-                          ฿{formatMoney((item.price || 0) * (item.quantity || 1))}
-                        </span>
-                        <button type="button" onClick={() => handleRemoveItem(index)} className="p-1.5 text-slate-400 hover:text-red-500">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-2 text-right">
-                    <span className="text-sm font-bold text-slate-700">
-                      ยอดรวม: ฿{formatMoney(items.reduce((s, i) => s + (i.price || 0) * (i.quantity || 1), 0))}
-                    </span>
-                  </div>
-                </div>
-                <div className="mt-6 flex justify-end space-x-3">
-                  <button type="button" onClick={closeEditModal} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-md text-sm font-bold hover:bg-slate-200">ยกเลิก</button>
-                  <button type="submit" disabled={loading} className="px-4 py-2 border border-transparent rounded-md shadow-sm shadow-blue-200 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60">
-                    {loading ? 'กำลังบันทึก...' : 'บันทึกการแก้ไข'}
-                  </button>
-                </div>
-              </form>
+      {/* ── Edit Modal ──────────────────────────────────────────────────────────── */}
+      {editOpen && editReq && (
+        <Modal title="แก้ไขรายการเบิกจ่าย" onClose={() => setEditOpen(false)}>
+          <form onSubmit={handleEdit} className="space-y-4">
+            <Field label="ชื่อรายการ">
+              <input type="text" required value={editTitle}
+                onChange={e => setEditTitle(e.target.value)}
+                className="input-base" />
+            </Field>
+            <Field label="รายละเอียดเพิ่มเติม">
+              <textarea rows={2} value={editDesc}
+                onChange={e => setEditDesc(e.target.value)}
+                className="input-base" />
+            </Field>
+            <ItemEditor items={editItems} onChange={setEditItems} />
+            <div className="flex justify-end gap-3 pt-2">
+              <button type="button" onClick={() => setEditOpen(false)}
+                className="btn-secondary">ยกเลิก</button>
+              <button type="submit" disabled={loading}
+                className="btn-primary">{loading ? 'กำลังบันทึก...' : 'บันทึกการแก้ไข'}</button>
             </div>
-          </div>
-        </div>
+          </form>
+        </Modal>
       )}
 
-      {/* Details Modal */}
-      {isDetailsModalOpen && selectedReq && (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
-          <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
-            <div className="fixed inset-0 transition-opacity bg-slate-900 bg-opacity-75" onClick={() => setIsDetailsModalOpen(false)} />
-            <div className="relative inline-block w-full max-w-2xl p-6 overflow-y-auto text-left align-middle transition-all transform bg-white shadow-xl rounded-xl border border-slate-200">
-              <div className="flex justify-between items-start">
-                <div>
-                  <h3 className="text-xl font-bold text-slate-900">{selectedReq.title}</h3>
-                  <p className="text-sm text-slate-500 mt-1">{selectedReq.description}</p>
+      {/* ── Details Modal ───────────────────────────────────────────────────────── */}
+      {detailsOpen && selectedReq && (
+        <Modal title={selectedReq.title} onClose={() => setDetailsOpen(false)} wide>
+          {/* Meta row */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm mb-5">
+            <MetaField label="วันที่สร้าง">
+              {formatThaiDateTime(selectedReq.created_at)}
+            </MetaField>
+            <MetaField label="สถานะ">
+              <span className={`inline-flex px-2.5 py-1 rounded-full text-[11px] font-bold ${STATUS_CLASS[selectedReq.status]}`}>
+                {STATUS_LABEL[selectedReq.status]}
+              </span>
+            </MetaField>
+            <MetaField label="ผู้ขอเบิก">
+              {selectedReq.requester_name || selectedReq.creator_name || '—'}
+              {selectedReq.creator_dept && (
+                <span className="block text-slate-400 text-xs">{selectedReq.creator_dept}</span>
+              )}
+            </MetaField>
+            {selectedReq.status === 'approved' && selectedReq.approver_name && (
+              <MetaField label="ผู้อนุมัติ">
+                {selectedReq.approver_name}
+                {selectedReq.approver_dept && (
+                  <span className="block text-slate-400 text-xs">{selectedReq.approver_dept}</span>
+                )}
+              </MetaField>
+            )}
+            {selectedReq.approved_at && (
+              <MetaField label="วันที่อนุมัติ">
+                {formatThaiDateTime(selectedReq.approved_at)}
+              </MetaField>
+            )}
+          </div>
+
+          {selectedReq.description && (
+            <p className="text-sm text-slate-600 bg-slate-50 rounded-lg p-3 mb-4 border border-slate-100">
+              {selectedReq.description}
+            </p>
+          )}
+
+          {/* Items table */}
+          <div className="border border-slate-200 rounded-lg overflow-hidden mb-5">
+            <table className="min-w-full text-sm divide-y divide-slate-100">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="px-4 py-2 text-left text-xs font-bold text-slate-500 uppercase">รายการ</th>
+                  <th className="px-4 py-2 text-right text-xs font-bold text-slate-500 uppercase">ราคา/หน่วย (฿)</th>
+                  <th className="px-4 py-2 text-center text-xs font-bold text-slate-500 uppercase">จำนวน</th>
+                  <th className="px-4 py-2 text-right text-xs font-bold text-slate-500 uppercase">รวม (฿)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {selectedItems.map(item => (
+                  <tr key={item.id} className="hover:bg-slate-50">
+                    <td className="px-4 py-2 text-slate-800">{item.item_name}</td>
+                    <td className="px-4 py-2 text-slate-700 text-right">{formatMoney(item.price)}</td>
+                    <td className="px-4 py-2 text-slate-700 text-center">{item.quantity ?? 1}</td>
+                    <td className="px-4 py-2 text-blue-700 font-semibold text-right">
+                      {formatMoney(item.price * (item.quantity ?? 1))}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="bg-slate-50 font-bold">
+                <tr>
+                  <td colSpan={3} className="px-4 py-3 text-right text-slate-700">ยอดรวม:</td>
+                  <td className="px-4 py-3 text-right text-blue-600">฿{formatMoney(selectedReq.total_amount)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          {/* Signatures preview */}
+          {(selectedReq.requester_signature || selectedReq.approver_signature) && (
+            <div className="grid grid-cols-2 gap-4 mb-5">
+              {selectedReq.requester_signature && (
+                <div className="border border-slate-200 rounded-lg p-3 bg-slate-50">
+                  <p className="text-[10px] font-bold text-slate-500 uppercase mb-2">ลายเซ็นผู้ขอเบิก</p>
+                  <img src={selectedReq.requester_signature} alt="ลายเซ็น"
+                    className="max-h-16 object-contain" />
                 </div>
-                <button onClick={exportDetails} className="inline-flex items-center px-4 py-2 bg-slate-100 text-slate-600 rounded-md text-sm font-bold hover:bg-slate-200">
-                  <Download className="w-4 h-4 mr-2" /> ส่งออก Excel
+              )}
+              {selectedReq.approver_signature && selectedReq.status === 'approved' && (
+                <div className="border border-slate-200 rounded-lg p-3 bg-slate-50">
+                  <p className="text-[10px] font-bold text-slate-500 uppercase mb-2">ลายเซ็นผู้อนุมัติ</p>
+                  <img src={selectedReq.approver_signature} alt="ลายเซ็น"
+                    className="max-h-16 object-contain" />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex flex-wrap justify-between gap-3 pt-2 border-t border-slate-100">
+            <div className="flex gap-2">
+              <button onClick={() => setDetailsOpen(false)} className="btn-secondary">ปิด</button>
+              <button onClick={exportDetails}
+                className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-semibold hover:bg-slate-200">
+                <Download className="w-4 h-4" /> Excel
+              </button>
+              {selectedReq.status === 'approved' && (
+                <button
+                  onClick={() => printReport(selectedReq, selectedItems)}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 shadow shadow-indigo-200">
+                  <Printer className="w-4 h-4" /> พิมพ์ / บันทึก PDF
+                </button>
+              )}
+            </div>
+
+            {isApprover && selectedReq.status === 'pending' && (
+              <div className="flex gap-2">
+                <button onClick={() => handleAction('rejected')}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold text-white bg-red-600 hover:bg-red-700 shadow shadow-red-200">
+                  <X className="w-4 h-4" /> ปฏิเสธ
+                </button>
+                <button onClick={() => handleAction('approved')}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold text-white bg-green-600 hover:bg-green-700 shadow shadow-green-200">
+                  <Check className="w-4 h-4" /> อนุมัติ
                 </button>
               </div>
-
-              <div className="grid grid-cols-2 gap-4 mt-6 text-sm">
-                <div>
-                  <span className="block text-slate-500 font-bold uppercase text-[10px] tracking-wider">วันที่สร้าง</span>
-                  <span className="font-semibold text-slate-900 mt-1 block">{format(new Date(selectedReq.created_at), 'dd MMM yyyy HH:mm')}</span>
-                </div>
-                <div>
-                  <span className="block text-slate-500 font-bold uppercase text-[10px] tracking-wider mb-1">สถานะ</span>
-                  <span className={`inline-flex px-2.5 py-1 rounded-full text-[11px] font-bold ${
-                    selectedReq.status === 'approved' ? 'bg-green-100 text-green-700' :
-                    selectedReq.status === 'rejected' ? 'bg-red-100 text-red-700' :
-                    'bg-amber-100 text-amber-700'
-                  }`}>
-                    {selectedReq.status === 'pending' ? 'รออนุมัติ' : selectedReq.status === 'approved' ? 'อนุมัติแล้ว' : 'ปฏิเสธแล้ว'}
-                  </span>
-                </div>
-              </div>
-
-              <div className="mt-6 border-t border-slate-100 pt-4">
-                <h4 className="text-sm font-bold text-slate-700 mb-2">รายการสิ่งของ</h4>
-                <div className="border border-slate-200 rounded-lg overflow-x-auto max-h-60 overflow-y-auto">
-                  <table className="min-w-full divide-y divide-slate-100 text-sm">
-                    <thead className="bg-slate-50 sticky top-0">
-                      <tr>
-                        <th className="px-4 py-2 text-left text-xs font-bold text-slate-500 uppercase">รายการ</th>
-                        <th className="px-4 py-2 text-right text-xs font-bold text-slate-500 uppercase">ราคา/หน่วย (฿)</th>
-                        <th className="px-4 py-2 text-center text-xs font-bold text-slate-500 uppercase">จำนวน</th>
-                        <th className="px-4 py-2 text-right text-xs font-bold text-slate-500 uppercase">รวม (฿)</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-slate-100">
-                      {selectedItems.map(item => (
-                        <tr key={item.id} className="hover:bg-slate-50">
-                          <td className="px-4 py-2 text-slate-800">{item.item_name}</td>
-                          <td className="px-4 py-2 text-slate-800 text-right">{formatMoney(item.price)}</td>
-                          <td className="px-4 py-2 text-slate-800 text-center">{item.quantity ?? 1}</td>
-                          <td className="px-4 py-2 text-blue-700 font-semibold text-right">{formatMoney(item.price * (item.quantity ?? 1))}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot className="bg-slate-50 font-bold">
-                      <tr>
-                        <td colSpan={3} className="px-4 py-3 text-right">ยอดรวม:</td>
-                        <td className="px-4 py-3 text-right text-blue-600 font-bold">฿{formatMoney(selectedReq.total_amount)}</td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              </div>
-
-              <div className="mt-8 flex justify-between">
-                <button type="button" onClick={() => setIsDetailsModalOpen(false)} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-md text-sm font-bold hover:bg-slate-200">ปิดหน้าต่าง</button>
-                {user?.role === 'admin' && selectedReq.status === 'pending' && (
-                  <div className="flex space-x-3">
-                    <button onClick={() => handleAction('rejected')}
-                      className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-bold text-white bg-red-600 hover:bg-red-700 flex items-center shadow-red-200">
-                      <X className="w-4 h-4 mr-1" /> ปฏิเสธ
-                    </button>
-                    <button onClick={() => handleAction('approved')}
-                      className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-bold text-white bg-green-600 hover:bg-green-700 flex items-center shadow-green-200">
-                      <Check className="w-4 h-4 mr-1" /> อนุมัติ
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
+            )}
           </div>
-        </div>
+        </Modal>
       )}
+    </div>
+  );
+}
+
+// ─── Small helper components ──────────────────────────────────────────────────
+
+function StatCard({ icon, label, value, sub, color }: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  sub: string;
+  color: 'slate' | 'amber' | 'green' | 'red';
+}) {
+  const bg = { slate: 'bg-slate-50', amber: 'bg-amber-50', green: 'bg-green-50', red: 'bg-red-50' }[color];
+  return (
+    <div className={`${bg} rounded-xl border border-slate-200 p-4 flex items-start gap-3`}>
+      <div className="mt-0.5">{icon}</div>
+      <div className="min-w-0">
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{label}</p>
+        <p className="text-lg font-bold text-slate-900 mt-0.5">{value}</p>
+        {sub && <p className="text-xs text-slate-500 mt-0.5">{sub}</p>}
+      </div>
+    </div>
+  );
+}
+
+function Modal({ title, children, onClose, wide }: {
+  title: string;
+  children: React.ReactNode;
+  onClose: () => void;
+  wide?: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto">
+      <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+        <div className="fixed inset-0 bg-slate-900/70 transition-opacity" onClick={onClose} />
+        <div className={`relative inline-block w-full ${wide ? 'max-w-3xl' : 'max-w-2xl'} p-6 text-left align-middle bg-white shadow-xl rounded-xl border border-slate-200 z-10`}>
+          <h3 className="text-lg font-bold text-slate-900 mb-4">{title}</h3>
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="block text-sm font-bold text-slate-700 mb-1">{label}</label>
+      {children}
+    </div>
+  );
+}
+
+function MetaField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">{label}</span>
+      <span className="text-sm font-semibold text-slate-800">{children}</span>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
-import { LayoutDashboard, Users, Receipt, FileText, LogOut, LogIn, Menu, X, Database, Wallet, UserCog, Pencil } from 'lucide-react';
+import { LayoutDashboard, Users, Receipt, FileText, LogOut, LogIn, Menu, X, Database, Wallet, UserCog, Pencil, PenLine } from 'lucide-react';
 import { useState, useRef } from 'react';
 
 export function Layout() {
@@ -21,14 +21,16 @@ export function Layout() {
     { name: 'รายชื่อนักศึกษา',     href: '/students',    icon: Users },
     { name: 'Master Data',          href: '/master-data', icon: Database },
     { name: 'จัดการสมาชิก',        href: '/users',       icon: UserCog },
+    { name: 'ตั้งค่าลายเซ็น',      href: '/signature',   icon: PenLine },
   ];
 
-  const defaultOpPages = ['/', '/payments', '/expenses'];
+  const defaultOpPages = ['/', '/payments', '/expenses', '/signature'];
   // Legacy paths that grant access to /master-data for existing users
   const masterDataLegacy = ['/sections', '/majors'];
 
   const canAccess = (href: string): boolean => {
     if (!user?.allowed_pages || user.allowed_pages.length === 0) return true;
+    if (href === '/signature') return true; // always accessible
     if (href === '/master-data') {
       return user.allowed_pages.includes('/master-data') ||
              masterDataLegacy.some(p => user.allowed_pages!.includes(p));

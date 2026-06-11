@@ -20,13 +20,14 @@ export function ManageUsers() {
   const [loading, setLoading]           = useState(false);
 
   // Form state
-  const [username, setUsername]         = useState('');
-  const [password, setPassword]         = useState('');
-  const [name, setName]                 = useState('');
-  const [studentId, setStudentId]       = useState('');
-  const [role, setRole]                 = useState<Role>('operation');
-  const [departmentId, setDepartmentId] = useState<number | null>(null);
-  const [allowedPages, setAllowedPages] = useState<string[]>(AVAILABLE_PAGES.map(p => p.path));
+  const [username, setUsername]               = useState('');
+  const [password, setPassword]               = useState('');
+  const [name, setName]                       = useState('');
+  const [studentId, setStudentId]             = useState('');
+  const [role, setRole]                       = useState<Role>('operation');
+  const [departmentId, setDepartmentId]       = useState<number | null>(null);
+  const [allowedPages, setAllowedPages]       = useState<string[]>(AVAILABLE_PAGES.map(p => p.path));
+  const [canApprove, setCanApprove]           = useState(false);
 
   useEffect(() => {
     loadUsers();
@@ -59,6 +60,7 @@ export function ManageUsers() {
       setRole(user.role);
       setDepartmentId(user.department_id ?? null);
       setAllowedPages(user.allowed_pages ?? AVAILABLE_PAGES.map(p => p.path));
+      setCanApprove(user.can_approve_expenses ?? false);
     } else {
       setEditingUser(null);
       setUsername('');
@@ -68,6 +70,7 @@ export function ManageUsers() {
       setRole('operation');
       setDepartmentId(null);
       setAllowedPages(AVAILABLE_PAGES.map(p => p.path));
+      setCanApprove(false);
     }
     setIsModalOpen(true);
   };
@@ -93,6 +96,7 @@ export function ManageUsers() {
           role,
           department_id: departmentId,
           allowed_pages: allowedPages,
+          can_approve_expenses: canApprove,
         });
       } else {
         if (!password) { alert('กรุณากรอกรหัสผ่าน'); return; }
@@ -102,6 +106,7 @@ export function ManageUsers() {
           role,
           department_id: departmentId,
           allowed_pages: allowedPages,
+          can_approve_expenses: canApprove,
         });
       }
       await loadUsers();
@@ -162,6 +167,9 @@ export function ManageUsers() {
                   <td className="px-6 py-4 whitespace-nowrap text-slate-600">{user.department_name || '-'}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-slate-600">
                     {user.role === 'admin' ? 'ผู้ดูแลระบบ' : 'พนักงาน/ฝ่ายปฏิบัติการ'}
+                    {user.can_approve_expenses && (
+                      <span className="ml-2 inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700">อนุมัติได้</span>
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right font-medium">
                     <button onClick={() => handleOpenModal(user)} className="text-blue-600 hover:text-blue-800 font-bold text-xs mr-3">แก้ไข</button>
@@ -260,6 +268,19 @@ export function ManageUsers() {
                       </label>
                     ))}
                   </div>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                  <div>
+                    <p className="text-sm font-bold text-slate-800">สิทธิ์อนุมัติรายการเบิกจ่าย</p>
+                    <p className="text-xs text-slate-500 mt-0.5">ผู้ใช้นี้สามารถอนุมัติ/ปฏิเสธรายการเบิกจ่ายได้</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCanApprove(v => !v)}
+                    className={`relative w-11 h-6 rounded-full transition-colors ${canApprove ? 'bg-blue-600' : 'bg-slate-300'}`}
+                  >
+                    <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${canApprove ? 'translate-x-5' : 'translate-x-0'}`} />
+                  </button>
                 </div>
                 <div className="mt-5 sm:mt-6 flex justify-end space-x-3">
                   <button type="button" onClick={handleCloseModal} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-md text-sm font-bold hover:bg-slate-200">ยกเลิก</button>

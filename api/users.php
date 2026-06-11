@@ -36,14 +36,15 @@ function handleGet(PDO $pdo): void
 function handleCreate(PDO $pdo): void
 {
     requireAdmin();
-    $body     = getBody();
-    $username = trim($body['username'] ?? '');
-    $password = $body['password'] ?? '';
-    $name     = trim($body['name'] ?? '');
-    $sid      = trim($body['student_id'] ?? '') ?: null;
-    $role     = $body['role'] ?? 'operation';
-    $pages    = $body['allowed_pages'] ?? null;
-    $deptId   = isset($body['department_id']) ? ((int)$body['department_id'] ?: null) : null;
+    $body        = getBody();
+    $username    = trim($body['username'] ?? '');
+    $password    = $body['password'] ?? '';
+    $name        = trim($body['name'] ?? '');
+    $sid         = trim($body['student_id'] ?? '') ?: null;
+    $role        = $body['role'] ?? 'operation';
+    $pages       = $body['allowed_pages'] ?? null;
+    $deptId      = isset($body['department_id']) ? ((int)$body['department_id'] ?: null) : null;
+    $canApprove  = !empty($body['can_approve_expenses']) ? 1 : 0;
 
     if (!$username || !$password || !$name) {
         jsonError('ชื่อผู้ใช้, รหัสผ่าน และชื่อ-นามสกุล จำเป็นต้องกรอก');
@@ -53,8 +54,8 @@ function handleCreate(PDO $pdo): void
     }
 
     $stmt = $pdo->prepare(
-        "INSERT INTO `users` (username, password_hash, name, student_id, role, allowed_pages, department_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO `users` (username, password_hash, name, student_id, role, allowed_pages, department_id, can_approve_expenses)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
     );
     try {
         $stmt->execute([
@@ -65,6 +66,7 @@ function handleCreate(PDO $pdo): void
             $role,
             $pages !== null ? json_encode($pages) : null,
             $deptId,
+            $canApprove,
         ]);
     } catch (PDOException $e) {
         if (str_contains($e->getMessage(), 'Duplicate')) {
@@ -101,35 +103,36 @@ function handleUpdate(PDO $pdo): void
     $user = $stmt->fetch();
     if (!$user) jsonError('User not found', 404);
 
-    $username = trim($body['username'] ?? $user['username']);
-    $name     = trim($body['name']     ?? $user['name']);
-    $sid      = array_key_exists('student_id', $body)
-                    ? (trim($body['student_id']) ?: null)
-                    : $user['student_id'];
-    $role     = $body['role']          ?? $user['role'];
-    $pages    = array_key_exists('allowed_pages', $body) ? $body['allowed_pages'] : null;
-    $password = $body['password'] ?? '';
-    $deptId   = array_key_exists('department_id', $body)
-                    ? ((int)($body['department_id'] ?? 0) ?: null)
-                    : ($user['department_id'] ?? null);
+    $username   = trim($body['username'] ?? $user['username']);
+    $name       = trim($body['name']     ?? $user['name']);
+    $sid        = array_key_exists('student_id', $body)
+                      ? (trim($body['student_id']) ?: null)
+                      : $user['student_id'];
+    $role       = $body['role'] ?? $user['role'];
+    $pages      = array_key_exists('allowed_pages', $body) ? $body['allowed_pages'] : null;
+    $password   = $body['password'] ?? '';
+    $deptId     = array_key_exists('department_id', $body)
+                      ? ((int)($body['department_id'] ?? 0) ?: null)
+                      : ($user['department_id'] ?? null);
+    $canApprove = array_key_exists('can_approve_expenses', $body)
+                      ? (!empty($body['can_approve_expenses']) ? 1 : 0)
+                      : (int)($user['can_approve_expenses'] ?? 0);
 
     if (!in_array($role, ['admin', 'operation'], true)) {
         jsonError('บทบาทไม่ถูกต้อง');
     }
 
+    $pagesJson = $pages !== null ? json_encode($pages) : $user['allowed_pages'];
+
     if ($password) {
         $hash = password_hash($password, PASSWORD_BCRYPT);
-        $upd  = $pdo->prepare(
-            "UPDATE `users` SET username=?, password_hash=?, name=?, student_id=?, role=?, allowed_pages=?, department_id=? WHERE id=?"
-        );
-        $upd->execute([$username, $hash, $name, $sid, $role,
-            $pages !== null ? json_encode($pages) : $user['allowed_pages'], $deptId, $id]);
+        $pdo->prepare(
+            "UPDATE `users` SET username=?, password_hash=?, name=?, student_id=?, role=?, allowed_pages=?, department_id=?, can_approve_expenses=? WHERE id=?"
+        )->execute([$username, $hash, $name, $sid, $role, $pagesJson, $deptId, $canApprove, $id]);
     } else {
-        $upd = $pdo->prepare(
-            "UPDATE `users` SET username=?, name=?, student_id=?, role=?, allowed_pages=?, department_id=? WHERE id=?"
-        );
-        $upd->execute([$username, $name, $sid, $role,
-            $pages !== null ? json_encode($pages) : $user['allowed_pages'], $deptId, $id]);
+        $pdo->prepare(
+            "UPDATE `users` SET username=?, name=?, student_id=?, role=?, allowed_pages=?, department_id=?, can_approve_expenses=? WHERE id=?"
+        )->execute([$username, $name, $sid, $role, $pagesJson, $deptId, $canApprove, $id]);
     }
 
     $updated = $pdo->prepare(
@@ -144,11 +147,10 @@ function handleUpdate(PDO $pdo): void
 
 function handleDelete(PDO $pdo): void
 {
-    requireAdmin();
-    $id = (int)($_GET['id'] ?? 0);
+    $sess = requireAdmin();
+    $id   = (int)($_GET['id'] ?? 0);
     if (!$id) jsonError('Missing id');
 
-    $sess = requireAdmin();
     if ($id === $sess['user_id']) {
         jsonError('ไม่สามารถลบบัญชีของตัวเองได้');
     }

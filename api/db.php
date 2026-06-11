@@ -135,6 +135,15 @@ try {
     $pdo->exec("ALTER TABLE `payments` ADD COLUMN `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
 } catch (PDOException $e) { /* column already exists */ }
 
+// ─── Auto-migration: signature + approval rights on users ─────────────────────
+try { $pdo->exec("ALTER TABLE `users` ADD COLUMN `signature` LONGTEXT DEFAULT NULL"); } catch (PDOException $e) {}
+try { $pdo->exec("ALTER TABLE `users` ADD COLUMN `can_approve_expenses` TINYINT(1) NOT NULL DEFAULT 0"); } catch (PDOException $e) {}
+
+// ─── Auto-migration: requester info + approved_at on expense_requests ─────────
+try { $pdo->exec("ALTER TABLE `expense_requests` ADD COLUMN `requester_name` VARCHAR(200) DEFAULT NULL"); } catch (PDOException $e) {}
+try { $pdo->exec("ALTER TABLE `expense_requests` ADD COLUMN `requester_signature` LONGTEXT DEFAULT NULL"); } catch (PDOException $e) {}
+try { $pdo->exec("ALTER TABLE `expense_requests` ADD COLUMN `approved_at` TIMESTAMP NULL DEFAULT NULL"); } catch (PDOException $e) {}
+
 // ─── Seed: insert default users only when the table is empty ─────────────────
 
 $userCount = (int)$pdo->query("SELECT COUNT(*) FROM `users`")->fetchColumn();

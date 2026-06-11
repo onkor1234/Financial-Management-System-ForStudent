@@ -1,10 +1,22 @@
 @import "tailwindcss";
 
 @keyframes fadeFromGreen {
-  0%   { color: rgb(22 163 74); }   /* green-600 */
-  100% { color: rgb(148 163 184); } /* slate-400 */
+  0%   { color: rgb(22 163 74); }
+  100% { color: rgb(148 163 184); }
 }
 
 .flash-on-update {
   animation: fadeFromGreen 1.5s ease-out;
+}
+
+@layer utilities {
+  .input-base {
+    @apply mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500;
+  }
+  .btn-primary {
+    @apply inline-flex items-center px-4 py-2 rounded-lg text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 shadow shadow-blue-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors;
+  }
 }

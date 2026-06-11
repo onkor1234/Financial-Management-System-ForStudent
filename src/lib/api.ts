@@ -16,6 +16,8 @@ export interface User {
   profile_image?: string | null;
   department_id?: number | null;
   department_name?: string | null;
+  signature?: string | null;
+  can_approve_expenses?: boolean;
 }
 
 export interface Department {
@@ -102,6 +104,14 @@ export interface ExpenseRequest {
   created_by: number | null;
   approved_by: number | null;
   created_at: string;
+  approved_at?: string | null;
+  requester_name?: string | null;
+  requester_signature?: string | null;
+  creator_name?: string | null;
+  creator_dept?: string | null;
+  approver_name?: string | null;
+  approver_dept?: string | null;
+  approver_signature?: string | null;
 }
 
 export interface ExpenseItem {
@@ -177,6 +187,9 @@ export const api = {
 
     updateProfileImage: (profile_image: string | null) =>
       request<User>('PUT', '/profile.php', { profile_image }),
+
+    updateSignature: (signature: string | null) =>
+      request<User>('PUT', '/profile.php', { signature }),
   },
 
   users: {
@@ -191,6 +204,7 @@ export const api = {
       role: Role;
       allowed_pages?: string[];
       department_id?: number | null;
+      can_approve_expenses?: boolean;
     }) => request<User>('POST', '/users.php', data),
 
     update: (
@@ -203,6 +217,7 @@ export const api = {
         role?: Role;
         allowed_pages?: string[];
         department_id?: number | null;
+        can_approve_expenses?: boolean;
       }
     ) => request<User>('PUT', `/users.php?id=${id}`, data),
 
@@ -295,6 +310,8 @@ export const api = {
       title: string;
       description?: string;
       items: { name: string; price: number; quantity: number }[];
+      requester_name?: string;
+      requester_signature?: string | null;
     }) => request<ExpenseRequest>('POST', '/expense_requests.php', data),
 
     update: (id: number, data: {

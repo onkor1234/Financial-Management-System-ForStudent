@@ -19,6 +19,7 @@ import { ExpenseRequests } from './pages/ExpenseRequests';
 import { ManageUsers } from './pages/ManageUsers';
 import { MasterData } from './pages/MasterData';
 import { PublicPaymentStatus } from './pages/PublicPaymentStatus';
+import { SignatureSettings } from './pages/SignatureSettings';
 
 // Protected Route Component
 function ProtectedRoute({ children, requiredRole }: { children: React.ReactNode, requiredRole?: 'admin' | 'operation' }) {
@@ -46,6 +47,8 @@ function ProtectedRoute({ children, requiredRole }: { children: React.ReactNode,
   // ถ้า user มี allowed_pages กำหนดไว้ → ใช้เป็น source of truth ไม่สนใจ requiredRole
   if (user.allowed_pages && user.allowed_pages.length > 0) {
     const path = location.pathname;
+    // /signature is always accessible to all logged-in users
+    if (path === '/signature') return <>{children}</>;
     // backward compat: /master-data is accessible if user had /sections or /majors
     const allowed = user.allowed_pages.includes(path) ||
       (path === '/master-data' && (
@@ -132,13 +135,21 @@ export default function App() {
                 </ProtectedRoute>
               } 
             />
-            <Route 
-              path="expenses" 
+            <Route
+              path="expenses"
               element={
                 <ProtectedRoute>
                   <ExpenseRequests />
                 </ProtectedRoute>
-              } 
+              }
+            />
+            <Route
+              path="signature"
+              element={
+                <ProtectedRoute>
+                  <SignatureSettings />
+                </ProtectedRoute>
+              }
             />
           </Route>
         </Routes>

@@ -114,14 +114,30 @@ function requireAdmin(): array
 function formatUser(array $row): array
 {
     return [
-        'id'              => (int)$row['id'],
-        'username'        => $row['username'],
-        'name'            => $row['name'],
-        'student_id'      => $row['student_id'],
-        'role'            => $row['role'],
-        'allowed_pages'   => isset($row['allowed_pages']) ? json_decode($row['allowed_pages'], true) : null,
-        'profile_image'   => $row['profile_image'] ?? null,
-        'department_id'   => isset($row['department_id']) ? (int)$row['department_id'] : null,
-        'department_name' => $row['department_name'] ?? null,
+        'id'                   => (int)$row['id'],
+        'username'             => $row['username'],
+        'name'                 => $row['name'],
+        'student_id'           => $row['student_id'],
+        'role'                 => $row['role'],
+        'allowed_pages'        => isset($row['allowed_pages']) ? json_decode($row['allowed_pages'], true) : null,
+        'profile_image'        => $row['profile_image'] ?? null,
+        'department_id'        => isset($row['department_id']) ? (int)$row['department_id'] : null,
+        'department_name'      => $row['department_name'] ?? null,
+        'signature'            => $row['signature'] ?? null,
+        'can_approve_expenses' => !empty($row['can_approve_expenses']),
     ];
+}
+
+function requireApprover(): array
+{
+    $session = requireAuth();
+    if ($session['role'] === 'admin') return $session;
+    global $pdo;
+    $stmt = $pdo->prepare("SELECT can_approve_expenses FROM `users` WHERE id = ?");
+    $stmt->execute([$session['user_id']]);
+    $u = $stmt->fetch();
+    if (!$u || !$u['can_approve_expenses']) {
+        jsonError('ไม่มีสิทธิ์อนุมัติรายการ', 403);
+    }
+    return $session;
 }

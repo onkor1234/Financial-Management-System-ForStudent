@@ -5,17 +5,27 @@ require_once __DIR__ . '/db.php';
 $method = $_SERVER['REQUEST_METHOD'];
 if ($method !== 'GET') requireAuth();
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function formatExpense(array $r): array
 {
     return [
-        'id'           => (int)$r['id'],
-        'title'        => $r['title'],
-        'total_amount' => (float)$r['total_amount'],
-        'description'  => $r['description'],
-        'status'       => $r['status'],
-        'created_by'   => $r['created_by'] ? (int)$r['created_by'] : null,
-        'approved_by'  => $r['approved_by'] ? (int)$r['approved_by'] : null,
-        'created_at'   => $r['created_at'],
+        'id'                   => (int)$r['id'],
+        'title'                => $r['title'],
+        'total_amount'         => (float)$r['total_amount'],
+        'description'          => $r['description'],
+        'status'               => $r['status'],
+        'created_by'           => $r['created_by'] ? (int)$r['created_by'] : null,
+        'approved_by'          => $r['approved_by'] ? (int)$r['approved_by'] : null,
+        'created_at'           => $r['created_at'],
+        'approved_at'          => $r['approved_at'] ?? null,
+        'requester_name'       => $r['requester_name'] ?? null,
+        'requester_signature'  => $r['requester_signature'] ?? null,
+        'creator_name'         => $r['creator_name'] ?? null,
+        'creator_dept'         => $r['creator_dept'] ?? null,
+        'approver_name'        => $r['approver_name'] ?? null,
+        'approver_dept'        => $r['approver_dept'] ?? null,
+        'approver_signature'   => $r['approver_signature'] ?? null,
     ];
 }
 
@@ -30,28 +40,41 @@ function formatItem(array $r): array
     ];
 }
 
+const LIST_SQL = "SELECT er.*,
+    uc.name AS creator_name, dc.name AS creator_dept,
+    ua.name AS approver_name, da.name AS approver_dept, ua.signature AS approver_signature
+FROM `expense_requests` er
+LEFT JOIN `users`       uc ON uc.id = er.created_by
+LEFT JOIN `departments` dc ON dc.id = uc.department_id
+LEFT JOIN `users`       ua ON ua.id = er.approved_by
+LEFT JOIN `departments` da ON da.id = ua.department_id";
+
+// ─── Routes ───────────────────────────────────────────────────────────────────
+
 switch ($method) {
+    // ── GET ──────────────────────────────────────────────────────────────────
     case 'GET':
         $id = (int)($_GET['id'] ?? 0);
         if ($id) {
-            $stmt = $pdo->prepare("SELECT * FROM `expense_requests` WHERE id = ?");
+            $stmt = $pdo->prepare(LIST_SQL . " WHERE er.id = ?");
             $stmt->execute([$id]);
             $req = $stmt->fetch();
             if (!$req) jsonError('Not found', 404);
 
-            $items = $pdo->prepare("SELECT * FROM `expense_items` WHERE expense_request_id = ? ORDER BY id");
+            $items = $pdo->prepare(
+                "SELECT * FROM `expense_items` WHERE expense_request_id = ? ORDER BY id"
+            );
             $items->execute([$id]);
 
-            $result = formatExpense($req);
+            $result         = formatExpense($req);
             $result['items'] = array_map('formatItem', $items->fetchAll());
             jsonResponse($result);
         }
 
-        $rows = $pdo->query(
-            "SELECT * FROM `expense_requests` ORDER BY created_at DESC"
-        )->fetchAll();
+        $rows = $pdo->query(LIST_SQL . " ORDER BY er.created_at DESC")->fetchAll();
         jsonResponse(array_map('formatExpense', $rows));
 
+    // ── POST ─────────────────────────────────────────────────────────────────
     case 'POST':
         $session = requireAuth();
         $body    = getBody();
@@ -61,19 +84,44 @@ switch ($method) {
 
         if (!$title) jsonError('ชื่อรายการจำเป็นต้องกรอก');
 
-        $validItems = array_filter($items, fn($i) => trim($i['name'] ?? '') !== '' && (float)($i['price'] ?? 0) > 0);
+        $validItems = array_filter(
+            $items,
+            fn($i) => trim($i['name'] ?? '') !== '' && (float)($i['price'] ?? 0) > 0
+        );
         if (empty($validItems)) jsonError('กรุณาเพิ่มรายการสิ่งของอย่างน้อย 1 รายการ');
 
-        $total = array_sum(array_map(fn($i) => (float)$i['price'] * max(1, (int)($i['quantity'] ?? 1)), array_values($validItems)));
+        $total = array_sum(array_map(
+            fn($i) => (float)$i['price'] * max(1, (int)($i['quantity'] ?? 1)),
+            array_values($validItems)
+        ));
+
+        // Requester name: from body, or fall back to user's profile name
+        $requesterName = trim($body['requester_name'] ?? '');
+        if (!$requesterName) {
+            $uStmt = $pdo->prepare("SELECT name FROM `users` WHERE id = ?");
+            $uStmt->execute([$session['user_id']]);
+            $uRow  = $uStmt->fetch();
+            $requesterName = $uRow ? $uRow['name'] : '';
+        }
+
+        // Requester signature: from body, or fall back to user's saved signature
+        $requesterSig = $body['requester_signature'] ?? null;
+        if (!$requesterSig) {
+            $sStmt = $pdo->prepare("SELECT signature FROM `users` WHERE id = ?");
+            $sStmt->execute([$session['user_id']]);
+            $sRow  = $sStmt->fetch();
+            $requesterSig = $sRow ? $sRow['signature'] : null;
+        }
 
         $pdo->beginTransaction();
         try {
             $pdo->prepare(
-                "INSERT INTO `expense_requests` (title, total_amount, description, status, created_by)
-                 VALUES (?, ?, ?, 'pending', ?)"
-            )->execute([$title, $total, $desc ?: null, $session['user_id']]);
+                "INSERT INTO `expense_requests`
+                 (title, total_amount, description, status, created_by, requester_name, requester_signature)
+                 VALUES (?, ?, ?, 'pending', ?, ?, ?)"
+            )->execute([$title, $total, $desc ?: null, $session['user_id'], $requesterName ?: null, $requesterSig]);
 
-            $reqId   = (int)$pdo->lastInsertId();
+            $reqId    = (int)$pdo->lastInsertId();
             $itemStmt = $pdo->prepare(
                 "INSERT INTO `expense_items` (expense_request_id, item_name, price, quantity) VALUES (?, ?, ?, ?)"
             );
@@ -87,10 +135,11 @@ switch ($method) {
             jsonError('เกิดข้อผิดพลาด: ' . $e->getMessage(), 500);
         }
 
-        $stmt = $pdo->prepare("SELECT * FROM `expense_requests` WHERE id = ?");
+        $stmt = $pdo->prepare(LIST_SQL . " WHERE er.id = ?");
         $stmt->execute([$reqId]);
         jsonResponse(formatExpense($stmt->fetch()), 201);
 
+    // ── PUT ──────────────────────────────────────────────────────────────────
     case 'PUT':
         $id      = (int)($_GET['id'] ?? 0);
         $body    = getBody();
@@ -113,10 +162,16 @@ switch ($method) {
 
         if (!$title) jsonError('ชื่อรายการจำเป็นต้องกรอก');
 
-        $validItems = array_filter($items, fn($i) => trim($i['name'] ?? '') !== '' && (float)($i['price'] ?? 0) > 0);
+        $validItems = array_filter(
+            $items,
+            fn($i) => trim($i['name'] ?? '') !== '' && (float)($i['price'] ?? 0) > 0
+        );
         if (empty($validItems)) jsonError('กรุณาเพิ่มรายการสิ่งของอย่างน้อย 1 รายการ');
 
-        $total = array_sum(array_map(fn($i) => (float)$i['price'] * max(1, (int)($i['quantity'] ?? 1)), array_values($validItems)));
+        $total = array_sum(array_map(
+            fn($i) => (float)$i['price'] * max(1, (int)($i['quantity'] ?? 1)),
+            array_values($validItems)
+        ));
 
         $pdo->beginTransaction();
         try {
@@ -139,28 +194,31 @@ switch ($method) {
             jsonError('เกิดข้อผิดพลาด: ' . $e->getMessage(), 500);
         }
 
-        $stmt = $pdo->prepare("SELECT * FROM `expense_requests` WHERE id = ?");
+        $stmt = $pdo->prepare(LIST_SQL . " WHERE er.id = ?");
         $stmt->execute([$id]);
         jsonResponse(formatExpense($stmt->fetch()));
 
+    // ── PATCH ────────────────────────────────────────────────────────────────
     case 'PATCH':
         $id      = (int)($_GET['id'] ?? 0);
         $body    = getBody();
         $status  = $body['status'] ?? '';
-        $session = requireAdmin();
+        $session = requireApprover();
 
         if (!$id || !in_array($status, ['approved', 'rejected'], true)) {
             jsonError('id และ status (approved/rejected) จำเป็น');
         }
 
+        $approvedAt = $status === 'approved' ? date('Y-m-d H:i:s') : null;
         $pdo->prepare(
-            "UPDATE `expense_requests` SET status=?, approved_by=? WHERE id=?"
-        )->execute([$status, $session['user_id'], $id]);
+            "UPDATE `expense_requests` SET status=?, approved_by=?, approved_at=? WHERE id=?"
+        )->execute([$status, $session['user_id'], $approvedAt, $id]);
 
-        $stmt = $pdo->prepare("SELECT * FROM `expense_requests` WHERE id = ?");
+        $stmt = $pdo->prepare(LIST_SQL . " WHERE er.id = ?");
         $stmt->execute([$id]);
         jsonResponse(formatExpense($stmt->fetch()));
 
+    // ── DELETE ───────────────────────────────────────────────────────────────
     case 'DELETE':
         $id      = (int)($_GET['id'] ?? 0);
         $session = requireAuth();
