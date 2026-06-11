@@ -376,11 +376,17 @@ export function ExpenseRequests() {
     if (!selectedReq) return;
     setEditReqLoading(true);
     try {
-      const updated = await api.expenseRequests.updateRequester(selectedReq.id, {
-        requester_name:      editReqName,
-        requester_signature: editReqSig ?? selectedReq.requester_signature ?? undefined,
-      });
-      setSelectedReq(updated);
+      // Only send requester_signature when a new one was actually drawn
+      // — sending undefined would erase the existing signature on the server
+      const payload: Parameters<typeof api.expenseRequests.updateRequester>[1] = {
+        requester_name: editReqName,
+      };
+      if (editReqSig !== null) {
+        payload.requester_signature = editReqSig;
+      }
+      const updated = await api.expenseRequests.updateRequester(selectedReq.id, payload);
+      // Preserve items that aren't returned by updateRequester
+      setSelectedReq(prev => prev ? { ...prev, ...updated } : updated);
       await loadRequests();
       setEditReqOpen(false);
     } catch (err) {
@@ -406,9 +412,10 @@ export function ExpenseRequests() {
   const handleAction = async (status: 'approved' | 'rejected') => {
     if (!selectedReq || !isApprover) return;
     try {
-      await api.expenseRequests.updateStatus(selectedReq.id, status);
+      const updated = await api.expenseRequests.updateStatus(selectedReq.id, status);
+      // Keep modal open so admin can still edit name/signature after approving
+      setSelectedReq(prev => prev ? { ...prev, ...updated } : updated);
       await loadRequests();
-      setDetailsOpen(false);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'ดำเนินการล้มเหลว');
     }

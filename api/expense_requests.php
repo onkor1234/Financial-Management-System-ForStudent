@@ -216,11 +216,24 @@ switch ($method) {
             if ($session['role'] !== 'admin' && (int)$chk['created_by'] !== (int)$session['user_id']) {
                 jsonError('ไม่มีสิทธิ์แก้ไขรายการนี้', 403);
             }
-            $rName = trim($body['requester_name'] ?? '') ?: null;
-            $rSig  = $body['requester_signature'] ?? null;
-            $pdo->prepare(
-                "UPDATE `expense_requests` SET requester_name=?, requester_signature=? WHERE id=?"
-            )->execute([$rName, $rSig, $id]);
+
+            // Only update fields that were explicitly sent — avoids accidentally clearing signature
+            $sets   = [];
+            $params = [];
+            if (array_key_exists('requester_name', $body)) {
+                $sets[]   = 'requester_name = ?';
+                $params[] = trim($body['requester_name'] ?? '') ?: null;
+            }
+            if (array_key_exists('requester_signature', $body)) {
+                $sets[]   = 'requester_signature = ?';
+                $params[] = $body['requester_signature'] ?: null;
+            }
+            if (!empty($sets)) {
+                $params[] = $id;
+                $pdo->prepare(
+                    "UPDATE `expense_requests` SET " . implode(', ', $sets) . " WHERE id = ?"
+                )->execute($params);
+            }
 
             $stmt = $pdo->prepare(LIST_SQL . " WHERE er.id = ?");
             $stmt->execute([$id]);
