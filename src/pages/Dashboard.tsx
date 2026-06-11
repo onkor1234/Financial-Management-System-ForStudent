@@ -29,8 +29,9 @@ export function Dashboard() {
 
   const [data, setData]               = useState<DashboardData>(emptyData);
   const [selectedReq, setSelectedReq]         = useState<PaymentRequest | null>(null);
-  const [selectedExpense, setSelectedExpense] = useState<ExpenseRequest | null>(null);
+  const [selectedExpense, setSelectedExpense]           = useState<ExpenseRequest | null>(null);
   const [selectedExpenseItems, setSelectedExpenseItems] = useState<ExpenseItem[]>([]);
+  const [expenseLoading, setExpenseLoading]             = useState(false);
   const [detailFilterSection, setDetailFilterSection] = useState('');
   const [detailSearch, setDetailSearch] = useState('');
   const [detailStatusFilter, setDetailStatusFilter] = useState<'all' | 'paid' | 'unpaid'>('all');
@@ -72,18 +73,23 @@ export function Dashboard() {
 
   const openExpenseModal = async (exp: ExpenseRequest) => {
     setSelectedExpense(exp);
+    setSelectedExpenseItems([]);
+    setExpenseLoading(true);
     try {
       const details = await api.expenseRequests.getDetails(exp.id);
       setSelectedExpense(details);
       setSelectedExpenseItems(details.items);
     } catch {
       setSelectedExpenseItems([]);
+    } finally {
+      setExpenseLoading(false);
     }
   };
 
   const closeExpenseModal = () => {
     setSelectedExpense(null);
     setSelectedExpenseItems([]);
+    setExpenseLoading(false);
   };
 
   const normalizedDetailSearch = detailSearch.trim().toLowerCase();
@@ -232,9 +238,9 @@ export function Dashboard() {
                       <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${STATUS_CLASS[exp.status]}`}>
                         {STATUS_LABEL[exp.status]}
                       </span>
-                      {(exp.receipt_images?.length ?? 0) > 0 && (
+                      {(exp.receipt_count ?? exp.receipt_images?.length ?? 0) > 0 && (
                         <span className="inline-flex items-center gap-0.5 text-[10px] text-blue-500 font-semibold">
-                          <Paperclip className="w-3 h-3" /> {exp.receipt_images!.length}
+                          <Paperclip className="w-3 h-3" /> {exp.receipt_count ?? exp.receipt_images!.length}
                         </span>
                       )}
                     </div>
@@ -340,8 +346,18 @@ export function Dashboard() {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-slate-100">
-                    {selectedExpenseItems.length === 0 ? (
-                      <tr><td colSpan={4} className="px-4 py-4 text-center text-slate-400">กำลังโหลด...</td></tr>
+                    {expenseLoading ? (
+                      <tr>
+                        <td colSpan={4} className="px-4 py-5 text-center">
+                          <div className="flex items-center justify-center gap-2 text-slate-400 text-sm">
+                            <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                            </svg>
+                            กำลังโหลดรายการ...
+                          </div>
+                        </td>
+                      </tr>
                     ) : selectedExpenseItems.map(item => (
                       <tr key={item.id} className="hover:bg-slate-50">
                         <td className="px-4 py-2 text-slate-800">{item.item_name}</td>
@@ -361,7 +377,7 @@ export function Dashboard() {
               </div>
 
               {/* Evidence section — 2 types */}
-              {((selectedExpense.receipt_images?.length ?? 0) > 0 || selectedExpense.status === 'approved') && (
+              {!expenseLoading && ((selectedExpense.receipt_images?.length ?? 0) > 0 || selectedExpense.status === 'approved') && (
                 <div className="mb-4 space-y-3">
                   <p className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
                     <FileText className="w-3.5 h-3.5" /> หลักฐานประกอบ

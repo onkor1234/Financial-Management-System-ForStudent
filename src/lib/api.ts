@@ -112,7 +112,8 @@ export interface ExpenseRequest {
   approver_name?: string | null;
   approver_dept?: string | null;
   approver_signature?: string | null;
-  receipt_images?: string[];
+  receipt_images?: string[];   // only present in detail endpoint (?id=X)
+  receipt_count?: number;      // present in list and dashboard endpoints
 }
 
 export interface ExpenseItem {

@@ -81,9 +81,9 @@ jsonResponse([
         'requester_name' => $r['requester_name'] ?? null,
         'creator_name'   => $r['creator_name'] ?? null,
         'creator_dept'   => $r['creator_dept'] ?? null,
-        'receipt_images' => (isset($r['receipt_images']) && $r['receipt_images'])
-                                ? (json_decode($r['receipt_images'], true) ?: [])
-                                : [],
+        'receipt_count'  => (isset($r['receipt_images']) && $r['receipt_images'])
+                                ? count(json_decode($r['receipt_images'], true) ?: [])
+                                : 0,
     ], $recentExpenses),
     'paymentRequests' => array_map(fn($r) => [
         'id'                => (int)$r['id'],

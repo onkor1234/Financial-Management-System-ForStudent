@@ -217,7 +217,7 @@ export function ReceiptUploader({ images, onChange }: {
         <div className="flex flex-wrap gap-2 p-3 bg-slate-50 rounded-lg border border-slate-200">
           {images.map((img, idx) => (
             <div key={idx} className="relative group">
-              <img src={img} alt={`receipt-${idx + 1}`}
+              <img src={img} alt={`receipt-${idx + 1}`} loading="lazy"
                 className="w-20 h-20 object-cover rounded-lg border border-slate-200 cursor-pointer"
                 onClick={() => window.open(img, '_blank')} />
               <button
@@ -262,7 +262,7 @@ export function ReceiptViewer({ images }: { images?: string[] }) {
         {images.map((img, idx) => (
           <button key={idx} type="button" onClick={() => setViewing(img)}
             className="relative group">
-            <img src={img} alt={`receipt-${idx + 1}`}
+            <img src={img} alt={`receipt-${idx + 1}`} loading="lazy"
               className="w-20 h-20 object-cover rounded-lg border border-slate-200 hover:border-blue-400 transition-colors" />
             <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/25 rounded-lg transition-colors">
               <Eye className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -384,9 +384,10 @@ export function ExpenseRequests() {
   const [editItems, setEditItems] = useState<ItemDraft[]>([]);
 
   // ── Details modal ──
-  const [detailsOpen, setDetailsOpen] = useState(false);
-  const [selectedReq,   setSelectedReq]   = useState<ExpenseRequest | null>(null);
-  const [selectedItems, setSelectedItems] = useState<ExpenseItem[]>([]);
+  const [detailsOpen,    setDetailsOpen]    = useState(false);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [selectedReq,    setSelectedReq]    = useState<ExpenseRequest | null>(null);
+  const [selectedItems,  setSelectedItems]  = useState<ExpenseItem[]>([]);
 
   // ── Edit-requester modal ──
   const [editReqOpen,     setEditReqOpen]     = useState(false);
@@ -559,13 +560,19 @@ export function ExpenseRequests() {
 
   // ── Details ──
   const openDetails = async (req: ExpenseRequest) => {
+    // Open modal immediately with list data, then load full detail in background
+    setSelectedReq(req);
+    setSelectedItems([]);
+    setDetailsOpen(true);
+    setDetailsLoading(true);
     try {
       const details = await api.expenseRequests.getDetails(req.id);
       setSelectedReq(details);
       setSelectedItems(details.items);
-      setDetailsOpen(true);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'โหลดรายละเอียดล้มเหลว');
+    } finally {
+      setDetailsLoading(false);
     }
   };
 
@@ -668,9 +675,9 @@ export function ExpenseRequests() {
                 <tr key={req.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-6 py-4 font-semibold text-slate-900 max-w-[200px]">
                     <div className="truncate">{req.title}</div>
-                    {(req.receipt_images?.length ?? 0) > 0 && (
+                    {(req.receipt_count ?? req.receipt_images?.length ?? 0) > 0 && (
                       <span className="inline-flex items-center gap-1 text-[10px] text-slate-400 mt-0.5">
-                        <Paperclip className="w-3 h-3" /> {req.receipt_images!.length} ใบเสร็จ
+                        <Paperclip className="w-3 h-3" /> {req.receipt_count ?? req.receipt_images!.length} ใบเสร็จ
                       </span>
                     )}
                   </td>
@@ -856,7 +863,19 @@ export function ExpenseRequests() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {selectedItems.map(item => (
+                {detailsLoading ? (
+                  <tr>
+                    <td colSpan={4} className="px-4 py-5 text-center">
+                      <div className="flex items-center justify-center gap-2 text-slate-400 text-sm">
+                        <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                        </svg>
+                        กำลังโหลดรายการ...
+                      </div>
+                    </td>
+                  </tr>
+                ) : selectedItems.map(item => (
                   <tr key={item.id} className="hover:bg-slate-50">
                     <td className="px-4 py-2 text-slate-800">{item.item_name}</td>
                     <td className="px-4 py-2 text-slate-700 text-right">{formatMoney(item.price)}</td>
@@ -876,28 +895,28 @@ export function ExpenseRequests() {
             </table>
           </div>
 
-          {/* Signatures preview */}
-          {(selectedReq.requester_signature || selectedReq.approver_signature) && (
+          {/* Signatures preview — shown only after detail loaded */}
+          {!detailsLoading && (selectedReq.requester_signature || selectedReq.approver_signature) && (
             <div className="grid grid-cols-2 gap-4 mb-5">
               {selectedReq.requester_signature && (
                 <div className="border border-slate-200 rounded-lg p-3 bg-slate-50">
                   <p className="text-[10px] font-bold text-slate-500 uppercase mb-2">ลายเซ็นผู้ขอเบิก</p>
                   <img src={selectedReq.requester_signature} alt="ลายเซ็น"
-                    className="max-h-16 object-contain" />
+                    className="max-h-16 object-contain" loading="lazy" />
                 </div>
               )}
               {selectedReq.approver_signature && selectedReq.status === 'approved' && (
                 <div className="border border-slate-200 rounded-lg p-3 bg-slate-50">
                   <p className="text-[10px] font-bold text-slate-500 uppercase mb-2">ลายเซ็นผู้อนุมัติ</p>
                   <img src={selectedReq.approver_signature} alt="ลายเซ็น"
-                    className="max-h-16 object-contain" />
+                    className="max-h-16 object-contain" loading="lazy" />
                 </div>
               )}
             </div>
           )}
 
-          {/* Receipt images */}
-          {(selectedReq.receipt_images?.length ?? 0) > 0 && (
+          {/* Receipt images — shown only after detail loaded */}
+          {!detailsLoading && (selectedReq.receipt_images?.length ?? 0) > 0 && (
             <div className="mb-5 p-3 bg-amber-50 border border-amber-100 rounded-lg">
               <ReceiptViewer images={selectedReq.receipt_images} />
             </div>
@@ -927,8 +946,8 @@ export function ExpenseRequests() {
                   <button onClick={openEditReceipts}
                     className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg text-sm font-semibold hover:bg-blue-100">
                     <Paperclip className="w-4 h-4" />
-                    {(selectedReq.receipt_images?.length ?? 0) > 0
-                      ? `ใบเสร็จ (${selectedReq.receipt_images!.length})`
+                    {(selectedReq.receipt_images?.length ?? selectedReq.receipt_count ?? 0) > 0
+                      ? `ใบเสร็จ (${selectedReq.receipt_images?.length ?? selectedReq.receipt_count})`
                       : 'แนบใบเสร็จ'}
                   </button>
                 </>

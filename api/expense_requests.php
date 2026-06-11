@@ -7,8 +7,12 @@ if ($method !== 'GET') requireAuth();
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// Full format — used for single-item responses (detail, PATCH, POST)
 function formatExpense(array $r): array
 {
+    $imgs = (isset($r['receipt_images']) && $r['receipt_images'])
+        ? (json_decode($r['receipt_images'], true) ?: [])
+        : [];
     return [
         'id'                   => (int)$r['id'],
         'title'                => $r['title'],
@@ -26,9 +30,33 @@ function formatExpense(array $r): array
         'approver_name'        => $r['approver_name'] ?? null,
         'approver_dept'        => $r['approver_dept'] ?? null,
         'approver_signature'   => $r['approver_signature'] ?? null,
-        'receipt_images'       => (isset($r['receipt_images']) && $r['receipt_images'])
-                                    ? (json_decode($r['receipt_images'], true) ?: [])
-                                    : [],
+        'receipt_images'       => $imgs,
+        'receipt_count'        => count($imgs),
+    ];
+}
+
+// Lightweight format — used for list endpoint; no base64 image data
+function formatExpenseList(array $r): array
+{
+    $imgJson = $r['receipt_images'] ?? null;
+    $count   = ($imgJson) ? count(json_decode($imgJson, true) ?: []) : 0;
+    return [
+        'id'             => (int)$r['id'],
+        'title'          => $r['title'],
+        'total_amount'   => (float)$r['total_amount'],
+        'description'    => $r['description'],
+        'status'         => $r['status'],
+        'created_by'     => $r['created_by'] ? (int)$r['created_by'] : null,
+        'approved_by'    => $r['approved_by'] ? (int)$r['approved_by'] : null,
+        'created_at'     => $r['created_at'],
+        'approved_at'    => $r['approved_at'] ?? null,
+        'requester_name' => $r['requester_name'] ?? null,
+        'creator_name'   => $r['creator_name'] ?? null,
+        'creator_dept'   => $r['creator_dept'] ?? null,
+        'approver_name'  => $r['approver_name'] ?? null,
+        'approver_dept'  => $r['approver_dept'] ?? null,
+        'receipt_count'  => $count,
+        // requester_signature, approver_signature, receipt_images — detail only
     ];
 }
 
@@ -75,7 +103,7 @@ switch ($method) {
         }
 
         $rows = $pdo->query(LIST_SQL . " ORDER BY er.created_at DESC")->fetchAll();
-        jsonResponse(array_map('formatExpense', $rows));
+        jsonResponse(array_map('formatExpenseList', $rows));
 
     // ── POST ─────────────────────────────────────────────────────────────────
     case 'POST':
