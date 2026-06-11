@@ -200,13 +200,39 @@ switch ($method) {
 
     // ── PATCH ────────────────────────────────────────────────────────────────
     case 'PATCH':
-        $id      = (int)($_GET['id'] ?? 0);
-        $body    = getBody();
+        $id     = (int)($_GET['id'] ?? 0);
+        $body   = getBody();
+        $action = $body['action'] ?? 'update_status';
+
+        if (!$id) jsonError('id จำเป็น');
+
+        if ($action === 'update_requester') {
+            // Creator or admin can update name/signature at any status
+            $session = requireAuth();
+            $chkStmt = $pdo->prepare("SELECT created_by FROM `expense_requests` WHERE id = ?");
+            $chkStmt->execute([$id]);
+            $chk = $chkStmt->fetch();
+            if (!$chk) jsonError('Not found', 404);
+            if ($session['role'] !== 'admin' && (int)$chk['created_by'] !== (int)$session['user_id']) {
+                jsonError('ไม่มีสิทธิ์แก้ไขรายการนี้', 403);
+            }
+            $rName = trim($body['requester_name'] ?? '') ?: null;
+            $rSig  = $body['requester_signature'] ?? null;
+            $pdo->prepare(
+                "UPDATE `expense_requests` SET requester_name=?, requester_signature=? WHERE id=?"
+            )->execute([$rName, $rSig, $id]);
+
+            $stmt = $pdo->prepare(LIST_SQL . " WHERE er.id = ?");
+            $stmt->execute([$id]);
+            jsonResponse(formatExpense($stmt->fetch()));
+        }
+
+        // Default: approve / reject
         $status  = $body['status'] ?? '';
         $session = requireApprover();
 
-        if (!$id || !in_array($status, ['approved', 'rejected'], true)) {
-            jsonError('id และ status (approved/rejected) จำเป็น');
+        if (!in_array($status, ['approved', 'rejected'], true)) {
+            jsonError('status (approved/rejected) จำเป็น');
         }
 
         $approvedAt = $status === 'approved' ? date('Y-m-d H:i:s') : null;
@@ -229,8 +255,12 @@ switch ($method) {
         $stmt->execute([$id]);
         $req = $stmt->fetch();
         if (!$req) jsonError('Not found', 404);
-        if ($req['status'] !== 'pending') jsonError('ไม่สามารถลบรายการที่อนุมัติ/ปฏิเสธแล้ว');
-        if ($session['role'] !== 'admin' && (int)$req['created_by'] !== (int)$session['user_id']) {
+
+        if ($session['role'] === 'admin') {
+            // Admin can delete any status (approved items auto-refund via budget calc)
+        } elseif ($req['status'] !== 'pending') {
+            jsonError('ไม่สามารถลบรายการที่อนุมัติ/ปฏิเสธแล้ว');
+        } elseif ((int)$req['created_by'] !== (int)$session['user_id']) {
             jsonError('ไม่มีสิทธิ์ลบรายการนี้', 403);
         }
 

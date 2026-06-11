@@ -325,6 +325,9 @@ export const api = {
 
     updateStatus: (id: number, status: 'approved' | 'rejected') =>
       request<ExpenseRequest>('PATCH', `/expense_requests.php?id=${id}`, { status }),
+
+    updateRequester: (id: number, data: { requester_name?: string; requester_signature?: string | null }) =>
+      request<ExpenseRequest>('PATCH', `/expense_requests.php?id=${id}`, { action: 'update_requester', ...data }),
   },
 
   budget: {

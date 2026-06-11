@@ -3,7 +3,7 @@ import { api, ExpenseRequest, ExpenseItem, formatMoney } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import {
   Plus, Check, X, Eye, Download, Trash2, Pencil,
-  Clock, CheckCircle2, XCircle, FileText, Printer,
+  Clock, CheckCircle2, XCircle, FileText, Printer, UserPen,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
@@ -253,6 +253,12 @@ export function ExpenseRequests() {
   const [selectedReq,   setSelectedReq]   = useState<ExpenseRequest | null>(null);
   const [selectedItems, setSelectedItems] = useState<ExpenseItem[]>([]);
 
+  // ── Edit-requester modal ──
+  const [editReqOpen,     setEditReqOpen]     = useState(false);
+  const [editReqName,     setEditReqName]     = useState('');
+  const [editReqSig,      setEditReqSig]      = useState<string | null>(null);
+  const [editReqLoading,  setEditReqLoading]  = useState(false);
+
   // ─────────────────────────────────────────────────────────────────────────
 
   const loadRequests = useCallback(async () => {
@@ -344,12 +350,43 @@ export function ExpenseRequests() {
 
   // ── Delete ──
   const handleDelete = async (req: ExpenseRequest) => {
-    if (!confirm(`ยืนยันลบรายการ "${req.title}" ?`)) return;
+    const isApproved = req.status === 'approved';
+    const msg = isApproved
+      ? `ยืนยันลบรายการ "${req.title}" ที่อนุมัติไปแล้ว?\n\nยอดเงิน ฿${formatMoney(req.total_amount)} จะถูกคืนเข้าสู่งบประมาณระบบโดยอัตโนมัติ`
+      : `ยืนยันลบรายการ "${req.title}" ?`;
+    if (!confirm(msg)) return;
     try {
       await api.expenseRequests.delete(req.id);
       await loadRequests();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'ลบรายการล้มเหลว');
+    }
+  };
+
+  // ── Edit requester name/signature ──
+  const openEditRequester = () => {
+    if (!selectedReq) return;
+    setEditReqName(selectedReq.requester_name || selectedReq.creator_name || '');
+    setEditReqSig(null);
+    setEditReqOpen(true);
+  };
+
+  const handleSaveRequester = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedReq) return;
+    setEditReqLoading(true);
+    try {
+      const updated = await api.expenseRequests.updateRequester(selectedReq.id, {
+        requester_name:      editReqName,
+        requester_signature: editReqSig ?? selectedReq.requester_signature ?? undefined,
+      });
+      setSelectedReq(updated);
+      await loadRequests();
+      setEditReqOpen(false);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'บันทึกล้มเหลว');
+    } finally {
+      setEditReqLoading(false);
     }
   };
 
@@ -483,16 +520,19 @@ export function ExpenseRequests() {
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
                       {req.status === 'pending' && (isAdmin || req.created_by === user?.id) && (
-                        <>
-                          <button onClick={() => openEdit(req)}
-                            className="text-blue-500 hover:text-blue-700 flex items-center font-bold text-xs">
-                            <Pencil className="w-4 h-4 mr-1" /> แก้ไข
-                          </button>
-                          <button onClick={() => handleDelete(req)}
-                            className="text-red-500 hover:text-red-700 flex items-center font-bold text-xs">
-                            <Trash2 className="w-4 h-4 mr-1" /> ลบ
-                          </button>
-                        </>
+                        <button onClick={() => openEdit(req)}
+                          className="text-blue-500 hover:text-blue-700 flex items-center font-bold text-xs">
+                          <Pencil className="w-4 h-4 mr-1" /> แก้ไข
+                        </button>
+                      )}
+                      {(req.status === 'pending'
+                          ? (isAdmin || req.created_by === user?.id)
+                          : isAdmin
+                      ) && (
+                        <button onClick={() => handleDelete(req)}
+                          className="text-red-500 hover:text-red-700 flex items-center font-bold text-xs">
+                          <Trash2 className="w-4 h-4 mr-1" /> ลบ
+                        </button>
                       )}
                       <button onClick={() => openDetails(req)}
                         className="text-slate-500 hover:text-slate-800 flex items-center font-bold text-xs">
@@ -681,7 +721,7 @@ export function ExpenseRequests() {
 
           {/* Actions */}
           <div className="flex flex-wrap justify-between gap-3 pt-2 border-t border-slate-100">
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button onClick={() => setDetailsOpen(false)} className="btn-secondary">ปิด</button>
               <button onClick={exportDetails}
                 className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-semibold hover:bg-slate-200">
@@ -691,7 +731,13 @@ export function ExpenseRequests() {
                 <button
                   onClick={() => printReport(selectedReq, selectedItems)}
                   className="inline-flex items-center gap-1.5 px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 shadow shadow-indigo-200">
-                  <Printer className="w-4 h-4" /> พิมพ์ / บันทึก PDF
+                  <Printer className="w-4 h-4" /> พิมพ์ / PDF
+                </button>
+              )}
+              {(isAdmin || selectedReq.created_by === user?.id) && (
+                <button onClick={openEditRequester}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg text-sm font-semibold hover:bg-amber-100">
+                  <UserPen className="w-4 h-4" /> แก้ไขชื่อ/ลายเซ็น
                 </button>
               )}
             </div>
@@ -709,6 +755,45 @@ export function ExpenseRequests() {
               </div>
             )}
           </div>
+        </Modal>
+      )}
+
+      {/* ── Edit Requester Modal ─────────────────────────────────────────────────── */}
+      {editReqOpen && selectedReq && (
+        <Modal title="แก้ไขชื่อ / ลายเซ็นผู้ขอเบิก" onClose={() => setEditReqOpen(false)}>
+          <form onSubmit={handleSaveRequester} className="space-y-4">
+            <Field label="ชื่อ-นามสกุลผู้ขอเบิก">
+              <input type="text" value={editReqName}
+                onChange={e => setEditReqName(e.target.value)}
+                className="input-base" placeholder="ระบุชื่อ-นามสกุล" />
+            </Field>
+
+            <div className="space-y-2">
+              <p className="text-sm font-bold text-slate-700">ลายเซ็น</p>
+              {selectedReq.requester_signature && !editReqSig && (
+                <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200 mb-2">
+                  <img src={selectedReq.requester_signature} alt="ลายเซ็นปัจจุบัน"
+                    className="h-10 object-contain" />
+                  <p className="text-xs text-slate-500">ลายเซ็นปัจจุบัน — วาดด้านล่างเพื่อเปลี่ยน</p>
+                </div>
+              )}
+              <SignatureCanvas
+                onChange={setEditReqSig}
+                width={460}
+                height={120}
+                label={selectedReq.requester_signature ? 'วาดลายเซ็นใหม่ (เว้นว่างเพื่อคงเดิม)' : 'วาดลายเซ็น'}
+              />
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button type="button" onClick={() => setEditReqOpen(false)}
+                className="btn-secondary">ยกเลิก</button>
+              <button type="submit" disabled={editReqLoading}
+                className="btn-primary">
+                {editReqLoading ? 'กำลังบันทึก...' : 'บันทึก'}
+              </button>
+            </div>
+          </form>
         </Modal>
       )}
     </div>
