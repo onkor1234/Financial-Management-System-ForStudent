@@ -21,7 +21,7 @@
 cmru-unifinance/
 ├── api/                        # PHP Backend
 │   ├── db.php                  # DB connection + Auto-migration + Seed data
-│   ├── config.php              # CORS, Session, Helper functions
+│   ├── config.php              # CORS, Session, Helper functions (formatUser)
 │   ├── auth/
 │   │   ├── login.php           # POST /api/auth/login.php
 │   │   ├── logout.php          # POST /api/auth/logout.php
@@ -30,6 +30,7 @@ cmru-unifinance/
 │   ├── students.php            # GET/POST/PUT/DELETE /api/students.php
 │   ├── sections.php            # GET/POST/PUT/DELETE /api/sections.php
 │   ├── majors.php              # GET/POST/PUT/DELETE /api/majors.php
+│   ├── departments.php         # GET/POST/PUT/DELETE /api/departments.php
 │   ├── payment_requests.php    # GET/POST /api/payment_requests.php
 │   ├── payments.php            # PATCH /api/payments.php?id=X
 │   ├── expense_requests.php    # GET/POST/PATCH /api/expense_requests.php
@@ -41,6 +42,8 @@ cmru-unifinance/
 │   ├── contexts/
 │   │   └── AuthContext.tsx     # Auth State + Session management
 │   └── pages/                  # หน้าต่าง ๆ ของระบบ
+│       ├── MasterData.tsx      # Master Data (กลุ่มเรียน / สาขาวิชา / ตำแหน่ง)
+│       └── ...
 ├── vite.config.ts              # Vite config + API Proxy
 └── README.md
 ```
@@ -103,11 +106,14 @@ npm run dev
 users (
   id, username UNIQUE, password_hash, name, student_id,
   role ENUM('admin','operation'), allowed_pages JSON,
+  profile_image LONGTEXT,
+  department_id FK→departments(SET NULL),
   created_at, updated_at
 )
 
-sections (id, name, created_at)
-majors   (id, name, created_at)
+sections    (id, name, created_at)
+majors      (id, name, created_at)
+departments (id, name, created_at)
 
 students (
   id, student_id UNIQUE, first_name, last_name,
@@ -123,7 +129,7 @@ payment_requests (
 payments (
   id, request_id FK→payment_requests(CASCADE),
   student_id FK→students(CASCADE),
-  is_paid TINYINT, receipt_image LONGTEXT, paid_at
+  is_paid TINYINT, receipt_image LONGTEXT, paid_at, updated_at
 )
 
 expense_requests (
@@ -135,7 +141,7 @@ expense_requests (
 
 expense_items (
   id, expense_request_id FK→expense_requests(CASCADE),
-  item_name, price
+  item_name, price, quantity
 )
 
 budget_additions (
@@ -156,6 +162,7 @@ budget_additions (
 | GET/POST/PUT/DELETE | `/api/students.php` | จัดการนักศึกษา | ✅ |
 | GET/POST/PUT/DELETE | `/api/sections.php` | จัดการกลุ่มเรียน | ✅ |
 | GET/POST/PUT/DELETE | `/api/majors.php` | จัดการสาขาวิชา | ✅ |
+| GET/POST/PUT/DELETE | `/api/departments.php` | จัดการตำแหน่ง | ✅ (เขียน: Admin) |
 | GET | `/api/payment_requests.php` | รายการเรียกเก็บทั้งหมด | ✅ |
 | GET | `/api/payment_requests.php?id=X` | รายละเอียด + สถานะชำระ | ✅ |
 | POST | `/api/payment_requests.php` | สร้างรายการ (auto-create payments) | ✅ |
@@ -168,18 +175,34 @@ budget_additions (
 
 ---
 
+## หน้าและเมนูในระบบ
+
+| เส้นทาง | หน้า | สิทธิ์ |
+|---------|------|--------|
+| `/` | Dashboard | ✅ |
+| `/payments` | รายการเรียกเก็บเงิน | ✅ |
+| `/expenses` | รายการเบิกจ่าย | ✅ |
+| `/budget` | งบประมาณระบบ | Admin |
+| `/students` | รายชื่อนักศึกษา | Admin |
+| `/master-data` | Master Data (กลุ่มเรียน / สาขาวิชา / ตำแหน่ง) | Admin |
+| `/users` | จัดการสมาชิก | Admin |
+
+> **Backward compat:** user ที่มี `/sections` หรือ `/majors` ใน `allowed_pages` เดิม สามารถเข้า `/master-data` ได้โดยอัตโนมัติ
+
+---
+
 ## สิทธิ์การใช้งาน
 
 | ฟีเจอร์ | admin | operation |
 |--------|-------|-----------|
 | ดู Dashboard | ✅ | ✅ |
-| จัดการนักศึกษา | ✅ | ✅ |
 | รายการเรียกเก็บ / อัปเดตการชำระ | ✅ | ✅ |
 | ดูรายการเบิกจ่าย | ✅ | ✅ |
 | สร้างคำขอเบิกจ่าย | ❌ | ✅ |
 | อนุมัติ/ปฏิเสธเบิกจ่าย | ✅ | ❌ |
 | เติมงบประมาณ | ✅ | ❌ |
-| จัดการกลุ่มเรียน/สาขา | ✅ | ❌ |
+| จัดการนักศึกษา | ✅ | ❌ |
+| Master Data (กลุ่มเรียน / สาขาวิชา / ตำแหน่ง) | ✅ | ❌ |
 | จัดการสมาชิก | ✅ | ❌ |
 
 ---
@@ -205,6 +228,7 @@ RewriteRule ^(.*)$ /index.html [L]
 
 ## การพัฒนาเพิ่มเติม
 
-- **เพิ่มหน้าใหม่:** สร้างไฟล์ใน `src/pages/`, เพิ่ม route ใน `src/App.tsx`
+- **เพิ่มหน้าใหม่:** สร้างไฟล์ใน `src/pages/`, เพิ่ม route ใน `src/App.tsx`, เพิ่ม path ใน `AVAILABLE_PAGES` (ManageUsers.tsx)
 - **เพิ่ม API endpoint:** ทุกไฟล์ต้อง `require_once __DIR__ . '/config.php'` และ `require_once __DIR__ . '/db.php'`
-- **Migration เพิ่มเติม:** เพิ่ม `$pdo->exec("ALTER TABLE ...")` ใน `api/db.php`
+- **Migration เพิ่มเติม:** เพิ่ม `$pdo->exec("ALTER TABLE ...")` ใน `api/db.php` ครอบด้วย `try/catch`
+- **เพิ่มแท็บใน Master Data:** แก้ไข `src/pages/MasterData.tsx` เพิ่ม entry ใน `TAB_META` และ handler ที่เกี่ยวข้อง
