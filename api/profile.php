@@ -31,6 +31,6 @@ if ($image === null || trim((string)$image) === '' || $image === 'null') {
 $pdo->prepare("UPDATE `users` SET profile_image = ? WHERE id = ?")
     ->execute([$image, $userId]);
 
-$user = $pdo->prepare("SELECT * FROM `users` WHERE id = ?");
+$user = $pdo->prepare("SELECT u.*, d.name AS department_name FROM `users` u LEFT JOIN `departments` d ON d.id = u.department_id WHERE u.id = ?");
 $user->execute([$userId]);
 jsonResponse(formatUser($user->fetch()));

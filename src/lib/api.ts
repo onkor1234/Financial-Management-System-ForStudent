@@ -14,6 +14,13 @@ export interface User {
   role: Role;
   allowed_pages?: string[];
   profile_image?: string | null;
+  department_id?: number | null;
+  department_name?: string | null;
+}
+
+export interface Department {
+  id: number;
+  name: string;
 }
 
 export interface Student {
@@ -183,6 +190,7 @@ export const api = {
       student_id?: string;
       role: Role;
       allowed_pages?: string[];
+      department_id?: number | null;
     }) => request<User>('POST', '/users.php', data),
 
     update: (
@@ -194,6 +202,7 @@ export const api = {
         student_id?: string | null;
         role?: Role;
         allowed_pages?: string[];
+        department_id?: number | null;
       }
     ) => request<User>('PUT', `/users.php?id=${id}`, data),
 
@@ -213,6 +222,13 @@ export const api = {
     create: (name: string) => request<Major>('POST', '/majors.php', { name }),
     update: (id: number, name: string) => request<Major>('PUT', `/majors.php?id=${id}`, { name }),
     delete: (id: number) => request<{ success: boolean }>('DELETE', `/majors.php?id=${id}`),
+  },
+
+  departments: {
+    list: () => request<Department[]>('GET', '/departments.php'),
+    create: (name: string) => request<Department>('POST', '/departments.php', { name }),
+    update: (id: number, name: string) => request<Department>('PUT', `/departments.php?id=${id}`, { name }),
+    delete: (id: number) => request<{ success: boolean }>('DELETE', `/departments.php?id=${id}`),
   },
 
   students: {

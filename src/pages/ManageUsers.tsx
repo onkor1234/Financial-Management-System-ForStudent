@@ -1,39 +1,51 @@
 import React, { useState, useEffect } from 'react';
-import { api, User, Role } from '../lib/api';
+import { api, User, Role, Department } from '../lib/api';
 import { Plus } from 'lucide-react';
 
 const AVAILABLE_PAGES = [
-  { path: '/',          label: 'แดชบอร์ด' },
-  { path: '/payments',  label: 'รายการเรียกเก็บ' },
-  { path: '/expenses',  label: 'รายการเบิกจ่าย' },
-  { path: '/budget',    label: 'งบประมาณระบบ' },
-  { path: '/students',  label: 'รายชื่อนักศึกษา' },
-  { path: '/sections',  label: 'จัดการกลุ่มเรียน' },
-  { path: '/majors',    label: 'จัดการสาขาวิชา' },
-  { path: '/users',     label: 'จัดการสมาชิก' },
+  { path: '/',             label: 'แดชบอร์ด' },
+  { path: '/payments',     label: 'รายการเรียกเก็บ' },
+  { path: '/expenses',     label: 'รายการเบิกจ่าย' },
+  { path: '/budget',       label: 'งบประมาณระบบ' },
+  { path: '/students',     label: 'รายชื่อนักศึกษา' },
+  { path: '/master-data',  label: 'Master Data' },
+  { path: '/users',        label: 'จัดการสมาชิก' },
 ];
 
 export function ManageUsers() {
-  const [users, setUsers]           = useState<User[]>([]);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [loading, setLoading]       = useState(false);
+  const [users, setUsers]               = useState<User[]>([]);
+  const [departments, setDepartments]   = useState<Department[]>([]);
+  const [isModalOpen, setIsModalOpen]   = useState(false);
+  const [editingUser, setEditingUser]   = useState<User | null>(null);
+  const [loading, setLoading]           = useState(false);
 
   // Form state
-  const [username, setUsername]     = useState('');
-  const [password, setPassword]     = useState('');
-  const [name, setName]             = useState('');
-  const [studentId, setStudentId]   = useState('');
-  const [role, setRole]             = useState<Role>('operation');
+  const [username, setUsername]         = useState('');
+  const [password, setPassword]         = useState('');
+  const [name, setName]                 = useState('');
+  const [studentId, setStudentId]       = useState('');
+  const [role, setRole]                 = useState<Role>('operation');
+  const [departmentId, setDepartmentId] = useState<number | null>(null);
   const [allowedPages, setAllowedPages] = useState<string[]>(AVAILABLE_PAGES.map(p => p.path));
 
-  useEffect(() => { loadUsers(); }, []);
+  useEffect(() => {
+    loadUsers();
+    loadDepartments();
+  }, []);
 
   const loadUsers = async () => {
     try {
       setUsers(await api.users.list());
     } catch (err) {
       alert(err instanceof Error ? err.message : 'โหลดข้อมูลล้มเหลว');
+    }
+  };
+
+  const loadDepartments = async () => {
+    try {
+      setDepartments(await api.departments.list());
+    } catch (err) {
+      // non-critical — departments may be empty
     }
   };
 
@@ -45,6 +57,7 @@ export function ManageUsers() {
       setName(user.name);
       setStudentId(user.student_id ?? '');
       setRole(user.role);
+      setDepartmentId(user.department_id ?? null);
       setAllowedPages(user.allowed_pages ?? AVAILABLE_PAGES.map(p => p.path));
     } else {
       setEditingUser(null);
@@ -53,6 +66,7 @@ export function ManageUsers() {
       setName('');
       setStudentId('');
       setRole('operation');
+      setDepartmentId(null);
       setAllowedPages(AVAILABLE_PAGES.map(p => p.path));
     }
     setIsModalOpen(true);
@@ -77,11 +91,18 @@ export function ManageUsers() {
           name,
           student_id: studentId || null,
           role,
+          department_id: departmentId,
           allowed_pages: allowedPages,
         });
       } else {
         if (!password) { alert('กรุณากรอกรหัสผ่าน'); return; }
-        await api.users.create({ username, password, name, student_id: studentId || undefined, role, allowed_pages: allowedPages });
+        await api.users.create({
+          username, password, name,
+          student_id: studentId || undefined,
+          role,
+          department_id: departmentId,
+          allowed_pages: allowedPages,
+        });
       }
       await loadUsers();
       handleCloseModal();
@@ -125,18 +146,20 @@ export function ManageUsers() {
                 <th className="px-6 py-3 border-b border-slate-100">ชื่อผู้ใช้</th>
                 <th className="px-6 py-3 border-b border-slate-100">ชื่อ-นามสกุล</th>
                 <th className="px-6 py-3 border-b border-slate-100">รหัสนักศึกษา</th>
+                <th className="px-6 py-3 border-b border-slate-100">ตำแหน่ง</th>
                 <th className="px-6 py-3 border-b border-slate-100">บทบาท</th>
                 <th className="px-6 py-3 border-b border-slate-100 text-right">ดำเนินการ</th>
               </tr>
             </thead>
             <tbody className="text-sm divide-y divide-slate-100">
               {users.length === 0 ? (
-                <tr><td colSpan={5} className="px-6 py-4 text-center text-slate-500">ไม่พบข้อมูลสมาชิก</td></tr>
+                <tr><td colSpan={6} className="px-6 py-4 text-center text-slate-500">ไม่พบข้อมูลสมาชิก</td></tr>
               ) : users.map(user => (
                 <tr key={user.id} className="hover:bg-slate-50">
                   <td className="px-6 py-4 whitespace-nowrap text-slate-900 font-medium">{user.username}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-slate-700">{user.name || '-'}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-slate-600">{user.student_id || '-'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-slate-600">{user.department_name || '-'}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-slate-600">
                     {user.role === 'admin' ? 'ผู้ดูแลระบบ' : 'พนักงาน/ฝ่ายปฏิบัติการ'}
                   </td>
@@ -197,6 +220,19 @@ export function ManageUsers() {
                     onChange={e => setStudentId(e.target.value)}
                     className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm focus:ring-blue-500 focus:border-blue-500 text-slate-800"
                   />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700">ตำแหน่ง <span className="text-slate-400 font-normal">(ถ้ามี)</span></label>
+                  <select
+                    value={departmentId ?? ''}
+                    onChange={e => setDepartmentId(e.target.value ? Number(e.target.value) : null)}
+                    className="mt-1 block w-full px-3 py-2 border border-slate-300 bg-white rounded-md shadow-sm sm:text-sm focus:ring-blue-500 focus:border-blue-500 text-slate-800"
+                  >
+                    <option value="">— ไม่ระบุ —</option>
+                    {departments.map(d => (
+                      <option key={d.id} value={d.id}>{d.name}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-slate-700">บทบาท</label>

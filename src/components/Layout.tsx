@@ -1,7 +1,7 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
-import { LayoutDashboard, Users, Receipt, FileText, LogOut, LogIn, Menu, X, Layers, BookOpen, Wallet, UserCog, Pencil } from 'lucide-react';
+import { LayoutDashboard, Users, Receipt, FileText, LogOut, LogIn, Menu, X, Database, Wallet, UserCog, Pencil } from 'lucide-react';
 import { useState, useRef } from 'react';
 
 export function Layout() {
@@ -14,23 +14,33 @@ export function Layout() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const allNavigation = [
-    { name: 'แดชบอร์ด',              href: '/',         icon: LayoutDashboard },
-    { name: 'รายการเรียกเก็บเงิน',   href: '/payments', icon: Receipt },
-    { name: 'รายการเบิกจ่าย',        href: '/expenses', icon: FileText },
-    { name: 'งบประมาณระบบ',          href: '/budget',   icon: Wallet },
-    { name: 'รายชื่อนักศึกษา',       href: '/students', icon: Users },
-    { name: 'จัดการกลุ่มเรียน',      href: '/sections', icon: Layers },
-    { name: 'จัดการสาขาวิชา',        href: '/majors',   icon: BookOpen },
-    { name: 'จัดการสมาชิก',          href: '/users',    icon: UserCog },
+    { name: 'แดชบอร์ด',            href: '/',            icon: LayoutDashboard },
+    { name: 'รายการเรียกเก็บเงิน', href: '/payments',    icon: Receipt },
+    { name: 'รายการเบิกจ่าย',      href: '/expenses',    icon: FileText },
+    { name: 'งบประมาณระบบ',        href: '/budget',      icon: Wallet },
+    { name: 'รายชื่อนักศึกษา',     href: '/students',    icon: Users },
+    { name: 'Master Data',          href: '/master-data', icon: Database },
+    { name: 'จัดการสมาชิก',        href: '/users',       icon: UserCog },
   ];
 
   const defaultOpPages = ['/', '/payments', '/expenses'];
+  // Legacy paths that grant access to /master-data for existing users
+  const masterDataLegacy = ['/sections', '/majors'];
+
+  const canAccess = (href: string): boolean => {
+    if (!user?.allowed_pages || user.allowed_pages.length === 0) return true;
+    if (href === '/master-data') {
+      return user.allowed_pages.includes('/master-data') ||
+             masterDataLegacy.some(p => user.allowed_pages!.includes(p));
+    }
+    return user.allowed_pages.includes(href);
+  };
 
   let navigation;
   if (!user) {
     navigation = allNavigation.filter(item => item.href === '/');
   } else if (user.allowed_pages && user.allowed_pages.length > 0) {
-    navigation = allNavigation.filter(item => user.allowed_pages!.includes(item.href));
+    navigation = allNavigation.filter(item => canAccess(item.href));
   } else {
     navigation = user.role === 'admin'
       ? allNavigation
@@ -154,7 +164,11 @@ export function Layout() {
                     </button>
                     <div className="min-w-0">
                       <p className="text-xs font-semibold truncate">{displayName}</p>
-                      <p className="text-[10px] text-slate-500 capitalize">บทบาท: {user.role === 'admin' ? 'ผู้ดูแลระบบ' : 'ฝ่ายปฏิบัติการ'}</p>
+                      <p className="text-[10px] text-slate-500 capitalize">
+                        {user.role === 'admin'
+                          ? 'บทบาท: ผู้ดูแลระบบ'
+                          : (user.department_name || 'ฝ่ายปฏิบัติการ')}
+                      </p>
                     </div>
                   </div>
                   <button

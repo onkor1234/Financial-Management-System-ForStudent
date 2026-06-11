@@ -14,7 +14,7 @@ if (!$username || !$password) {
     jsonError('กรุณากรอกชื่อผู้ใช้และรหัสผ่าน');
 }
 
-$stmt = $pdo->prepare("SELECT * FROM `users` WHERE username = ?");
+$stmt = $pdo->prepare("SELECT u.*, d.name AS department_name FROM `users` u LEFT JOIN `departments` d ON d.id = u.department_id WHERE u.username = ?");
 $stmt->execute([$username]);
 $user = $stmt->fetch();
 

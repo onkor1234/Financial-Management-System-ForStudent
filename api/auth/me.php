@@ -11,7 +11,7 @@ if (empty($_SESSION['user_id'])) {
     jsonResponse(null);
 }
 
-$stmt = $pdo->prepare("SELECT * FROM `users` WHERE id = ?");
+$stmt = $pdo->prepare("SELECT u.*, d.name AS department_name FROM `users` u LEFT JOIN `departments` d ON d.id = u.department_id WHERE u.id = ?");
 $stmt->execute([$_SESSION['user_id']]);
 $user = $stmt->fetch();
 

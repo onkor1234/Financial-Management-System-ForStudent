@@ -17,6 +17,7 @@ import { PaymentRequests } from './pages/PaymentRequests';
 import { ExpenseRequests } from './pages/ExpenseRequests';
 
 import { ManageUsers } from './pages/ManageUsers';
+import { MasterData } from './pages/MasterData';
 import { PublicPaymentStatus } from './pages/PublicPaymentStatus';
 
 // Protected Route Component
@@ -44,7 +45,13 @@ function ProtectedRoute({ children, requiredRole }: { children: React.ReactNode,
 
   // ถ้า user มี allowed_pages กำหนดไว้ → ใช้เป็น source of truth ไม่สนใจ requiredRole
   if (user.allowed_pages && user.allowed_pages.length > 0) {
-    if (!user.allowed_pages.includes(location.pathname)) {
+    const path = location.pathname;
+    // backward compat: /master-data is accessible if user had /sections or /majors
+    const allowed = user.allowed_pages.includes(path) ||
+      (path === '/master-data' && (
+        user.allowed_pages.includes('/sections') || user.allowed_pages.includes('/majors')
+      ));
+    if (!allowed) {
       return <Navigate to="/" replace />;
     }
     return <>{children}</>;
@@ -69,21 +76,29 @@ export default function App() {
           <Route path="/" element={<Layout />}>
             <Route index element={<Dashboard />} />
             <Route path="login" element={<Login />} />
-            <Route 
-              path="sections" 
+            <Route
+              path="master-data"
+              element={
+                <ProtectedRoute requiredRole="admin">
+                  <MasterData />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="sections"
               element={
                 <ProtectedRoute requiredRole="admin">
                   <Sections />
                 </ProtectedRoute>
-              } 
+              }
             />
-            <Route 
-              path="majors" 
+            <Route
+              path="majors"
               element={
                 <ProtectedRoute requiredRole="admin">
                   <Majors />
                 </ProtectedRoute>
-              } 
+              }
             />
             <Route 
               path="budget" 

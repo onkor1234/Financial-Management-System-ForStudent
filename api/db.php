@@ -115,10 +115,20 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS `budget_additions` (
     FOREIGN KEY (`created_by`) REFERENCES `users`(`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
+$pdo->exec("CREATE TABLE IF NOT EXISTS `departments` (
+    `id`         INT AUTO_INCREMENT PRIMARY KEY,
+    `name`       VARCHAR(100) NOT NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
 // ─── Auto-migration: add profile_image column if missing ─────────────────────
 try {
     $pdo->exec("ALTER TABLE `users` ADD COLUMN `profile_image` LONGTEXT DEFAULT NULL");
 } catch (PDOException $e) { /* column already exists */ }
+
+// ─── Auto-migration: add department_id to users ───────────────────────────────
+try { $pdo->exec("ALTER TABLE `users` ADD COLUMN `department_id` INT DEFAULT NULL"); } catch (PDOException $e) {}
+try { $pdo->exec("ALTER TABLE `users` ADD CONSTRAINT `fk_users_dept` FOREIGN KEY (`department_id`) REFERENCES `departments`(`id`) ON DELETE SET NULL"); } catch (PDOException $e) {}
 
 // ─── Auto-migration: add updated_at to payments (for real-time change detection)
 try {

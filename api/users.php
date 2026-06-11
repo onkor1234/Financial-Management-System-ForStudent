@@ -24,7 +24,12 @@ switch ($method) {
 function handleGet(PDO $pdo): void
 {
     requireAdmin();
-    $rows = $pdo->query("SELECT * FROM `users` ORDER BY id")->fetchAll();
+    $rows = $pdo->query(
+        "SELECT u.*, d.name AS department_name
+         FROM `users` u
+         LEFT JOIN `departments` d ON d.id = u.department_id
+         ORDER BY u.id"
+    )->fetchAll();
     jsonResponse(array_map('formatUser', $rows));
 }
 
@@ -38,6 +43,7 @@ function handleCreate(PDO $pdo): void
     $sid      = trim($body['student_id'] ?? '') ?: null;
     $role     = $body['role'] ?? 'operation';
     $pages    = $body['allowed_pages'] ?? null;
+    $deptId   = isset($body['department_id']) ? ((int)$body['department_id'] ?: null) : null;
 
     if (!$username || !$password || !$name) {
         jsonError('ชื่อผู้ใช้, รหัสผ่าน และชื่อ-นามสกุล จำเป็นต้องกรอก');
@@ -47,8 +53,8 @@ function handleCreate(PDO $pdo): void
     }
 
     $stmt = $pdo->prepare(
-        "INSERT INTO `users` (username, password_hash, name, student_id, role, allowed_pages)
-         VALUES (?, ?, ?, ?, ?, ?)"
+        "INSERT INTO `users` (username, password_hash, name, student_id, role, allowed_pages, department_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?)"
     );
     try {
         $stmt->execute([
@@ -58,6 +64,7 @@ function handleCreate(PDO $pdo): void
             $sid,
             $role,
             $pages !== null ? json_encode($pages) : null,
+            $deptId,
         ]);
     } catch (PDOException $e) {
         if (str_contains($e->getMessage(), 'Duplicate')) {
@@ -66,7 +73,12 @@ function handleCreate(PDO $pdo): void
         jsonError('เกิดข้อผิดพลาด', 500);
     }
 
-    $new = $pdo->prepare("SELECT * FROM `users` WHERE id = ?");
+    $new = $pdo->prepare(
+        "SELECT u.*, d.name AS department_name
+         FROM `users` u
+         LEFT JOIN `departments` d ON d.id = u.department_id
+         WHERE u.id = ?"
+    );
     $new->execute([(int)$pdo->lastInsertId()]);
     jsonResponse(formatUser($new->fetch()), 201);
 }
@@ -79,7 +91,12 @@ function handleUpdate(PDO $pdo): void
 
     if (!$id) jsonError('Missing id');
 
-    $stmt = $pdo->prepare("SELECT * FROM `users` WHERE id = ?");
+    $stmt = $pdo->prepare(
+        "SELECT u.*, d.name AS department_name
+         FROM `users` u
+         LEFT JOIN `departments` d ON d.id = u.department_id
+         WHERE u.id = ?"
+    );
     $stmt->execute([$id]);
     $user = $stmt->fetch();
     if (!$user) jsonError('User not found', 404);
@@ -92,6 +109,9 @@ function handleUpdate(PDO $pdo): void
     $role     = $body['role']          ?? $user['role'];
     $pages    = array_key_exists('allowed_pages', $body) ? $body['allowed_pages'] : null;
     $password = $body['password'] ?? '';
+    $deptId   = array_key_exists('department_id', $body)
+                    ? ((int)($body['department_id'] ?? 0) ?: null)
+                    : ($user['department_id'] ?? null);
 
     if (!in_array($role, ['admin', 'operation'], true)) {
         jsonError('บทบาทไม่ถูกต้อง');
@@ -100,20 +120,26 @@ function handleUpdate(PDO $pdo): void
     if ($password) {
         $hash = password_hash($password, PASSWORD_BCRYPT);
         $upd  = $pdo->prepare(
-            "UPDATE `users` SET username=?, password_hash=?, name=?, student_id=?, role=?, allowed_pages=? WHERE id=?"
+            "UPDATE `users` SET username=?, password_hash=?, name=?, student_id=?, role=?, allowed_pages=?, department_id=? WHERE id=?"
         );
         $upd->execute([$username, $hash, $name, $sid, $role,
-            $pages !== null ? json_encode($pages) : $user['allowed_pages'], $id]);
+            $pages !== null ? json_encode($pages) : $user['allowed_pages'], $deptId, $id]);
     } else {
         $upd = $pdo->prepare(
-            "UPDATE `users` SET username=?, name=?, student_id=?, role=?, allowed_pages=? WHERE id=?"
+            "UPDATE `users` SET username=?, name=?, student_id=?, role=?, allowed_pages=?, department_id=? WHERE id=?"
         );
         $upd->execute([$username, $name, $sid, $role,
-            $pages !== null ? json_encode($pages) : $user['allowed_pages'], $id]);
+            $pages !== null ? json_encode($pages) : $user['allowed_pages'], $deptId, $id]);
     }
 
-    $stmt->execute([$id]);
-    jsonResponse(formatUser($pdo->query("SELECT * FROM `users` WHERE id=$id")->fetch()));
+    $updated = $pdo->prepare(
+        "SELECT u.*, d.name AS department_name
+         FROM `users` u
+         LEFT JOIN `departments` d ON d.id = u.department_id
+         WHERE u.id = ?"
+    );
+    $updated->execute([$id]);
+    jsonResponse(formatUser($updated->fetch()));
 }
 
 function handleDelete(PDO $pdo): void
