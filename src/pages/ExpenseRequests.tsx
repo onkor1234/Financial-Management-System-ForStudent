@@ -88,7 +88,7 @@ tfoot td{background:#f3f4f6;font-weight:700}
 .sig-name{font-size:12pt;font-weight:600;margin-top:4px}
 .sig-dept{font-size:10pt;color:#666;margin-top:2px}
 .sig-date{font-size:10pt;color:#666;margin-top:2px}
-.receipts-section{margin-top:28px;border-top:1.5px solid #ddd;padding-top:14px;page-break-inside:avoid}
+.receipts-section{margin-top:0;padding-top:14px;page-break-before:always}
 .sec-title{font-size:11pt;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.04em;margin-bottom:12px}
 .receipts-grid{display:flex;flex-wrap:wrap;gap:12px}
 .receipt-thumb{text-align:center}
