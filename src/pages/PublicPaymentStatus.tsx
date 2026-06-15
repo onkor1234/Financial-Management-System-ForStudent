@@ -200,6 +200,7 @@ export function PublicPaymentStatus() {
 
   const { totals } = data;
   const progress = totals.total_count > 0 ? Math.round((totals.paid_count / totals.total_count) * 100) : 0;
+  const isComplete = totals.total_count > 0 && totals.paid_count >= totals.total_count;
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -261,6 +262,23 @@ export function PublicPaymentStatus() {
             </div>
           </div>
         </div>
+
+        {/* Completion banner — shown once everyone has paid */}
+        {isComplete && (
+          <div className="bg-gradient-to-r from-emerald-500 to-green-600 rounded-xl shadow-sm border border-emerald-600 p-5 sm:p-6 text-white">
+            <div className="flex items-start sm:items-center gap-4 flex-wrap">
+              <div className="bg-white/20 w-12 h-12 rounded-full flex items-center justify-center shrink-0">
+                <CheckCircle2 className="w-7 h-7" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-lg sm:text-xl font-bold">เก็บเงินครบถ้วนแล้ว · ปิดยอดเรียบร้อย 🎉</p>
+                <p className="text-sm text-emerald-50 mt-0.5">
+                  เก็บครบทั้งหมด {totals.total_count} คน · รวมเป็นเงิน ฿{formatMoney(totals.paid_amount)}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Stat cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">

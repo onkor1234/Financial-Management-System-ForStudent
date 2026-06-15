@@ -2,6 +2,25 @@ export function formatMoney(value: number): string {
   return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// Derive collection progress for a payment request that carries paid/total counts.
+export interface CollectionProgress {
+  total: number;            // จำนวนคนทั้งหมดที่ต้องเก็บ
+  paid: number;             // จำนวนคนที่จ่ายแล้ว
+  complete: boolean;        // เก็บครบทุกคนแล้วหรือยัง
+  collectedAmount: number;  // ยอดเงินที่เก็บได้แล้ว (฿)
+}
+
+export function getCollectionProgress(req: { total_count?: number; paid_count?: number; amount_per_person: number }): CollectionProgress {
+  const total = req.total_count ?? 0;
+  const paid  = req.paid_count ?? 0;
+  return {
+    total,
+    paid,
+    complete: total > 0 && paid >= total,
+    collectedAmount: paid * req.amount_per_person,
+  };
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type Role = 'admin' | 'operation';
@@ -53,6 +72,8 @@ export interface PaymentRequest {
   amount_per_person: number;
   created_by: number | null;
   created_at: string;
+  total_count?: number;   // present in list & dashboard endpoints
+  paid_count?: number;    // present in list & dashboard endpoints
 }
 
 export interface Payment {

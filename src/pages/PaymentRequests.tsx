@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { api, PaymentRequest, PaymentRequestWithDetails, StudentPayment, Section, formatMoney } from '../lib/api';
+import { api, PaymentRequest, PaymentRequestWithDetails, StudentPayment, Section, formatMoney, getCollectionProgress } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
-import { Plus, Check, Download, Trash2, Share2, Copy } from 'lucide-react';
+import { Plus, Check, Download, Trash2, Share2, Copy, CheckCircle2 } from 'lucide-react';
 import { format } from 'date-fns';
 import * as XLSX from 'xlsx';
 
@@ -193,18 +193,32 @@ export function PaymentRequests() {
                 <th className="px-6 py-3 border-b border-slate-100">ชื่อรายการ</th>
                 <th className="px-6 py-3 border-b border-slate-100">กลุ่มเป้าหมาย</th>
                 <th className="px-6 py-3 border-b border-slate-100">ยอด/คน</th>
+                <th className="px-6 py-3 border-b border-slate-100">สถานะการเก็บเงิน</th>
                 <th className="px-6 py-3 border-b border-slate-100">วันที่สร้าง</th>
                 <th className="px-6 py-3 border-b border-slate-100 text-right">การดำเนินการ</th>
               </tr>
             </thead>
             <tbody className="text-sm divide-y divide-slate-100">
               {requests.length === 0 ? (
-                <tr><td colSpan={5} className="px-6 py-4 text-center text-slate-500">ไม่พบรายการเรียกเก็บเงิน</td></tr>
-              ) : requests.map(req => (
+                <tr><td colSpan={6} className="px-6 py-4 text-center text-slate-500">ไม่พบรายการเรียกเก็บเงิน</td></tr>
+              ) : requests.map(req => {
+                const prog = getCollectionProgress(req);
+                return (
                 <tr key={req.id} className="hover:bg-slate-50 cursor-pointer" onClick={() => openDetails(req)}>
                   <td className="px-6 py-4 font-medium text-slate-900">{req.title}</td>
                   <td className="px-6 py-4 text-slate-600">{req.target_sections.join(', ')}</td>
                   <td className="px-6 py-4 font-bold text-slate-900">฿{formatMoney(req.amount_per_person)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {prog.complete ? (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-green-100 text-green-700">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> เก็บเงินครบแล้ว · {prog.total} คน · ฿{formatMoney(prog.collectedAmount)}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-700">
+                        เก็บแล้ว {prog.paid}/{prog.total} คน
+                      </span>
+                    )}
+                  </td>
                   <td className="px-6 py-4 text-slate-500">{format(new Date(req.created_at), 'dd MMM yyyy')}</td>
                   <td className="px-6 py-4 text-right">
                     <div className="inline-flex items-center gap-2">
@@ -242,7 +256,8 @@ export function PaymentRequests() {
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

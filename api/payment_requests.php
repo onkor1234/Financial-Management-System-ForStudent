@@ -7,7 +7,7 @@ $method = $_SERVER['REQUEST_METHOD'];
 
 function formatRequest(array $r): array
 {
-    return [
+    $out = [
         'id'               => (int)$r['id'],
         'title'            => $r['title'],
         'target_sections'  => json_decode($r['target_sections'], true) ?? [],
@@ -15,6 +15,12 @@ function formatRequest(array $r): array
         'created_by'       => $r['created_by'] ? (int)$r['created_by'] : null,
         'created_at'       => $r['created_at'],
     ];
+    // List query attaches payment progress counts via aggregate join
+    if (array_key_exists('total_count', $r)) {
+        $out['total_count'] = (int)$r['total_count'];
+        $out['paid_count']  = (int)$r['paid_count'];
+    }
+    return $out;
 }
 
 switch ($method) {
@@ -94,9 +100,16 @@ switch ($method) {
             jsonResponse($result);
         }
 
-        // List all requests
+        // List all requests with payment progress counts (based on current
+        // target students, matching the public status page)
         $rows = $pdo->query("SELECT * FROM `payment_requests` ORDER BY id DESC")->fetchAll();
-        jsonResponse(array_map('formatRequest', $rows));
+        jsonResponse(array_map(function ($r) use ($pdo) {
+            $out  = formatRequest($r);
+            $prog = computePaymentProgress($pdo, $r);
+            $out['total_count'] = $prog['total_count'];
+            $out['paid_count']  = $prog['paid_count'];
+            return $out;
+        }, $rows));
 
     case 'POST':
         $session = requireAuth();

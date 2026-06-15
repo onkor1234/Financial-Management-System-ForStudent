@@ -94,6 +94,49 @@ function normalizeReceiptImage(mixed $value): ?string
     return "data:$mime;base64,$raw";
 }
 
+/**
+ * Compute collection progress for a payment request the same way the public
+ * status page does: based on the students CURRENTLY in the target sections,
+ * not on stale rows in the payments table (a student may have changed section
+ * after the request was created). Returns ['total_count' => int, 'paid_count' => int].
+ */
+function computePaymentProgress(PDO $pdo, array $req): array
+{
+    $targets = json_decode($req['target_sections'], true) ?? [];
+    $isAll   = in_array('All', $targets, true);
+
+    if ($isAll) {
+        $studentIds = $pdo->query("SELECT id FROM `students`")->fetchAll(PDO::FETCH_COLUMN);
+    } elseif (empty($targets)) {
+        $studentIds = [];
+    } else {
+        $placeholders = implode(',', array_fill(0, count($targets), '?'));
+        $stmt = $pdo->prepare(
+            "SELECT s.id FROM `students` s
+             LEFT JOIN `sections` sec ON s.section_id = sec.id
+             WHERE sec.name IN ($placeholders)"
+        );
+        $stmt->execute($targets);
+        $studentIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+    }
+
+    $total = count($studentIds);
+    if ($total === 0) {
+        return ['total_count' => 0, 'paid_count' => 0];
+    }
+
+    $placeholders = implode(',', array_fill(0, count($studentIds), '?'));
+    $params       = array_merge([(int)$req['id']], array_map('intval', $studentIds));
+    $stmt = $pdo->prepare(
+        "SELECT COUNT(*) FROM `payments`
+         WHERE request_id = ? AND is_paid = 1 AND student_id IN ($placeholders)"
+    );
+    $stmt->execute($params);
+    $paid = (int)$stmt->fetchColumn();
+
+    return ['total_count' => $total, 'paid_count' => $paid];
+}
+
 function requireAuth(): array
 {
     if (empty($_SESSION['user_id'])) {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { api, DashboardData, PaymentRequest, ExpenseRequest, ExpenseItem, formatMoney } from '../lib/api';
+import { api, DashboardData, PaymentRequest, ExpenseRequest, ExpenseItem, formatMoney, getCollectionProgress } from '../lib/api';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
 import {
@@ -195,18 +195,33 @@ export function Dashboard() {
                   <th className="px-6 py-3">รายการ</th>
                   <th className="px-6 py-3">กลุ่มเรียน</th>
                   <th className="px-6 py-3">ยอด/คน</th>
+                  <th className="px-6 py-3">สถานะ</th>
                 </tr>
               </thead>
               <tbody className="text-sm divide-y divide-slate-100">
                 {data.paymentRequests.length === 0 ? (
-                  <tr><td colSpan={3} className="px-6 py-4 text-center text-slate-500">ไม่มีรายการเรียกเก็บเงิน</td></tr>
-                ) : data.paymentRequests.map(req => (
+                  <tr><td colSpan={4} className="px-6 py-4 text-center text-slate-500">ไม่มีรายการเรียกเก็บเงิน</td></tr>
+                ) : data.paymentRequests.map(req => {
+                  const prog = getCollectionProgress(req);
+                  return (
                   <tr key={req.id} className="hover:bg-slate-50 cursor-pointer" onClick={() => openModal(req)}>
                     <td className="px-6 py-4 font-medium text-slate-800">{req.title}</td>
                     <td className="px-6 py-4 text-slate-600">{req.target_sections.join(', ')}</td>
                     <td className="px-6 py-4 font-bold text-slate-800">฿{formatMoney(req.amount_per_person)}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {prog.complete ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-green-100 text-green-700">
+                          <CheckCircle className="w-3.5 h-3.5" /> ปิดยอดแล้ว · {prog.total} คน · ฿{formatMoney(prog.collectedAmount)}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-700">
+                          {prog.paid}/{prog.total} คน
+                        </span>
+                      )}
+                    </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

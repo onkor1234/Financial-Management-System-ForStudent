@@ -85,14 +85,19 @@ jsonResponse([
                                 ? count(json_decode($r['receipt_images'], true) ?: [])
                                 : 0,
     ], $recentExpenses),
-    'paymentRequests' => array_map(fn($r) => [
-        'id'                => (int)$r['id'],
-        'title'             => $r['title'],
-        'target_sections'   => json_decode($r['target_sections'], true) ?? [],
-        'amount_per_person' => (float)$r['amount_per_person'],
-        'created_by'        => $r['created_by'] ? (int)$r['created_by'] : null,
-        'created_at'        => $r['created_at'],
-    ], $paymentRequests),
+    'paymentRequests' => array_map(function ($r) use ($pdo) {
+        $prog = computePaymentProgress($pdo, $r);
+        return [
+            'id'                => (int)$r['id'],
+            'title'             => $r['title'],
+            'target_sections'   => json_decode($r['target_sections'], true) ?? [],
+            'amount_per_person' => (float)$r['amount_per_person'],
+            'created_by'        => $r['created_by'] ? (int)$r['created_by'] : null,
+            'created_at'        => $r['created_at'],
+            'total_count'       => $prog['total_count'],
+            'paid_count'        => $prog['paid_count'],
+        ];
+    }, $paymentRequests),
     'budgetAdditions' => array_map(fn($r) => [
         'id'          => (int)$r['id'],
         'amount'      => (float)$r['amount'],
