@@ -31,8 +31,10 @@ cmru-unifinance/
 │   ├── sections.php            # GET/POST/PUT/DELETE /api/sections.php
 │   ├── majors.php              # GET/POST/PUT/DELETE /api/majors.php
 │   ├── departments.php         # GET/POST/PUT/DELETE /api/departments.php
-│   ├── payment_requests.php    # GET/POST/DELETE /api/payment_requests.php
+│   ├── payment_requests.php    # GET/POST/DELETE /api/payment_requests.php (list มี progress counts)
 │   ├── payments.php            # PATCH /api/payments.php
+│   ├── payment_status.php      # GET — สถานะชำระสาธารณะ + totals (ไม่ต้องล็อกอิน)
+│   ├── payment_status_version.php # GET — version สำหรับ polling real-time
 │   ├── expense_requests.php    # GET/POST/PUT/PATCH/DELETE /api/expense_requests.php
 │   ├── budget.php              # GET/POST /api/budget.php
 │   └── dashboard.php           # GET /api/dashboard.php
@@ -42,7 +44,9 @@ cmru-unifinance/
 │   ├── contexts/
 │   │   └── AuthContext.tsx     # Auth State + Session management
 │   └── pages/
-│       ├── Dashboard.tsx       # KPI cards, รายการล่าสุด, modal ดูหลักฐาน
+│       ├── Dashboard.tsx       # KPI cards, รายการล่าสุด, modal ดูหลักฐาน, สถานะเก็บเงิน
+│       ├── PaymentRequests.tsx # รายการเรียกเก็บเงิน + คอลัมน์สถานะเก็บเงิน + แชร์ลิงก์สาธารณะ
+│       ├── PublicPaymentStatus.tsx # หน้าสถานะชำระสาธารณะ (real-time) — /share/payment/:id
 │       ├── ExpenseRequests.tsx # เบิกจ่าย + ReceiptUploader/Viewer + printReport (exported)
 │       ├── MasterData.tsx      # Master Data (กลุ่มเรียน / สาขาวิชา / ตำแหน่ง)
 │       └── ...
@@ -183,10 +187,14 @@ budget_additions (
 
 | Method | Endpoint | คำอธิบาย | Auth |
 |--------|----------|---------|------|
-| GET | `/api/payment_requests.php` | รายการทั้งหมด | ✅ |
+| GET | `/api/payment_requests.php` | รายการทั้งหมด + `total_count`/`paid_count` (ความคืบหน้าการเก็บเงิน) | ✅ |
 | GET | `/api/payment_requests.php?id=X` | รายละเอียด + สถานะชำระ | ✅ |
 | POST | `/api/payment_requests.php` | สร้างรายการ (auto-create payments) | ✅ |
 | PATCH | `/api/payments.php` | อัปเดตสถานะชำระ / แนบใบเสร็จ | ✅ |
+| GET | `/api/payment_status.php?id=X` | สถานะการชำระสาธารณะ (ไม่ต้องล็อกอิน) + `totals` | — |
+| GET | `/api/payment_status_version.php?id=X` | version สำหรับ polling แบบ real-time | — |
+
+> **ความคืบหน้าการเก็บเงิน (`total_count` / `paid_count`):** นับจาก **นักศึกษาที่อยู่ในกลุ่มเป้าหมายปัจจุบันจริง ๆ** (ไม่ใช่จำนวนแถวในตาราง `payments` ซึ่งอาจค้างไว้เมื่อนักศึกษาย้ายกลุ่มเรียน) — คำนวณด้วย helper `computePaymentProgress()` ใน `api/config.php` เพื่อให้ list, dashboard และหน้าสถานะสาธารณะได้ตัวเลขตรงกัน เมื่อ `paid_count === total_count` ถือว่า **เก็บเงินครบ / ปิดยอด**
 
 ### Expense Requests
 
@@ -214,8 +222,9 @@ budget_additions (
 
 | เส้นทาง | หน้า | สิทธิ์ |
 |---------|------|--------|
-| `/` | Dashboard — KPI, รายการล่าสุด, modal หลักฐาน (ใบเสร็จ + PDF) | ✅ |
-| `/payments` | รายการเรียกเก็บเงิน | ✅ |
+| `/` | Dashboard — KPI, รายการล่าสุด, modal หลักฐาน (ใบเสร็จ + PDF), สถานะการเก็บเงิน (ปิดยอด/ค้าง) | ✅ |
+| `/payments` | รายการเรียกเก็บเงิน — แสดงคอลัมน์สถานะ "เก็บเงินครบแล้ว" / "เก็บแล้ว X/Y คน" | ✅ |
+| `/share/payment/:id` | หน้าสถานะการชำระสาธารณะ (real-time) — มีแบนเนอร์สรุปยอดเมื่อเก็บครบ | — (ไม่ต้องล็อกอิน) |
 | `/expenses` | รายการเบิกจ่าย — สร้าง/แก้ไข/อนุมัติ/แนบใบเสร็จ/พิมพ์ PDF | ✅ |
 | `/budget` | งบประมาณระบบ | Admin |
 | `/students` | รายชื่อนักศึกษา | Admin |
@@ -235,6 +244,20 @@ budget_additions (
 - **แสดงผล:** thumbnail grid พร้อม click-to-fullscreen ทั้งใน `/expenses` และ Dashboard
 - **ใน PDF:** ส่วนท้ายของรายงาน PDF แสดงรูปใบเสร็จที่แนบไว้
 - **Dashboard evidence:** modal แสดง 2 หลักฐาน — (1) รูปใบเสร็จ (2) ปุ่มพิมพ์ PDF สำหรับที่อนุมัติแล้ว
+
+---
+
+## สถานะการเก็บเงิน (ปิดยอด / เก็บครบ)
+
+รายการเรียกเก็บเงินแต่ละรายการจะคำนวณความคืบหน้าจาก **นักศึกษาที่อยู่ในกลุ่มเป้าหมายปัจจุบัน** ผ่าน helper `computePaymentProgress()` ใน `api/config.php` — ส่งกลับ `total_count` และ `paid_count` ใน list endpoint และ dashboard
+
+- **หน้ารายการเรียกเก็บเงิน (`/payments`):** คอลัมน์สถานะแสดง
+  - 🟢 **เก็บเงินครบแล้ว · X คน · ฿รวม** เมื่อจ่ายครบทุกคน
+  - 🟡 **เก็บแล้ว X/Y คน** เมื่อยังไม่ครบ
+- **Dashboard:** ตารางรายการเรียกเก็บเงินแสดงสถานะ **ปิดยอดแล้ว · X คน · ฿รวม** / **X/Y คน**
+- **หน้าสถานะสาธารณะ (`/share/payment/:id`):** เมื่อเก็บครบ แสดงแบนเนอร์ **"เก็บเงินครบถ้วนแล้ว · ปิดยอดเรียบร้อย"** พร้อมสรุป รวมกี่คน / กี่บาท
+
+> ⚠️ ตัวเลขนับจาก **นักศึกษาในกลุ่มเป้าหมายปัจจุบัน** ไม่ใช่จำนวนแถวในตาราง `payments` — ป้องกันเลขคลาดเคลื่อนเมื่อมีนักศึกษาย้ายกลุ่มเรียนหลังสร้างรายการ ทำให้ทั้ง 3 หน้าได้ตัวเลขตรงกัน
 
 ---
 

@@ -32,7 +32,7 @@ Browser → Vite Dev Server (port 3000)
 | ไฟล์ | หน้าที่ |
 |------|--------|
 | `api/db.php` | DB connection + CREATE TABLE IF NOT EXISTS ทุกตาราง + ALTER TABLE migrations + seed users |
-| `api/config.php` | CORS headers, session_start(), helper functions: `jsonResponse`, `requireAuth`, `requireAdmin`, `requireApprover` |
+| `api/config.php` | CORS headers, session_start(), helper functions: `jsonResponse`, `requireAuth`, `requireAdmin`, `requireApprover`, `normalizeReceiptImage`, `computePaymentProgress` |
 | `src/lib/api.ts` | TypeScript types + fetch wrapper + `api` object (ใช้แทน mockDb ทุกหน้า) |
 | `src/contexts/AuthContext.tsx` | Login/logout state, PHP session cookie management |
 | `src/pages/ExpenseRequests.tsx` | Export: `printReport`, `ReceiptUploader`, `ReceiptViewer` — ใช้ร่วมกับ Dashboard |
@@ -136,6 +136,7 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS `new_table` (
 - **Session:** PHP session ทำงานผ่าน cookie `PHPSESSID` + Vite proxy (credentials: 'include')
 - **CORS:** `config.php` อนุญาต origin: localhost:3000, 5173, 8080 สำหรับ dev
 - **receipt_images:** เก็บใน `LONGTEXT` เป็น JSON array — ต้อง `json_decode` ก่อน return ใน `formatExpense()`
+- **ความคืบหน้าการเก็บเงิน:** ใช้ `computePaymentProgress($pdo, $req)` เสมอ (นับจากนักศึกษาในกลุ่มเป้าหมายปัจจุบัน) — **ห้าม** นับจำนวนแถวในตาราง `payments` ตรง ๆ เพราะแถวจะค้างเมื่อนักศึกษาย้ายกลุ่มเรียน ทำให้ list/dashboard/หน้าสถานะสาธารณะได้ตัวเลขไม่ตรงกัน
 
 ---
 
