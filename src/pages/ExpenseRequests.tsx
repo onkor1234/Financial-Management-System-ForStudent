@@ -3,8 +3,9 @@ import { api, ExpenseRequest, ExpenseItem, formatMoney } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import {
   Plus, Check, X, Eye, Download, Trash2, Pencil,
-  Clock, CheckCircle2, XCircle, FileText, Printer, UserPen, Paperclip, Image, Loader2,
+  Clock, CheckCircle2, XCircle, FileText, Printer, UserPen, Paperclip, Image, Loader2, ScanText, Sparkles,
 } from 'lucide-react';
+import { GoogleGenAI, Type } from '@google/genai';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
 import * as XLSX from 'xlsx';
@@ -317,6 +318,375 @@ export function ReceiptUploader({ images, onChange }: {
   );
 }
 
+// ─── Receipt OCR (อ่านใบเสร็จอัตโนมัติ — ทำงานในเครื่อง ไม่ใช้ API key) ─────────
+//
+// ใช้ Tesseract.js (WebAssembly OCR) โหลดจาก CDN เมื่อกดใช้งานครั้งแรกเท่านั้น
+// รูปภาพถูกประมวลผลในเบราว์เซอร์ของผู้ใช้ทั้งหมด — ไม่มีการส่งรูปออกภายนอก
+
+const TESSERACT_VERSION = '5.1.1';
+const TESSERACT_CDN = `https://cdn.jsdelivr.net/npm/tesseract.js@${TESSERACT_VERSION}/dist/tesseract.min.js`;
+
+let tesseractLoader: Promise<any> | null = null;
+function loadTesseract(): Promise<any> {
+  const w = window as any;
+  if (w.Tesseract) return Promise.resolve(w.Tesseract);
+  if (tesseractLoader) return tesseractLoader;
+  tesseractLoader = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = TESSERACT_CDN;
+    s.async = true;
+    s.onload = () =>
+      w.Tesseract ? resolve(w.Tesseract) : reject(new Error('โหลดไลบรารี OCR ไม่สำเร็จ'));
+    s.onerror = () => {
+      tesseractLoader = null;
+      reject(new Error('โหลดไลบรารี OCR ไม่สำเร็จ — ต้องเชื่อมต่ออินเทอร์เน็ตในการใช้งานครั้งแรก'));
+    };
+    document.head.appendChild(s);
+  });
+  return tesseractLoader;
+}
+
+const OCR_STATUS_TH: Record<string, string> = {
+  'loading tesseract core':        'กำลังโหลดเครื่องมือ OCR…',
+  'initializing tesseract':        'กำลังเริ่มต้น…',
+  'loading language traineddata':  'กำลังโหลดภาษาไทย…',
+  'initializing api':              'กำลังเตรียมระบบ…',
+  'recognizing text':              'กำลังอ่านใบเสร็จ…',
+};
+
+// บรรทัดที่เป็นหัวบิล/ยอดรวม/ข้อมูลร้าน — ไม่ใช่รายการสินค้า จึงข้าม
+const OCR_SKIP_KEYWORDS = [
+  // ยอดเงิน / ภาษี / การชำระเงิน
+  'รวม', 'ยอดสุทธิ', 'สุทธิ', 'total', 'subtotal', 'sub total', 'net', 'balance',
+  'ภาษีมูลค่า', 'vat', 'ภ.พ.', 'tax', 'เงินสด', 'cash', 'ทอน', 'เงินทอน', 'change',
+  'รับเงิน', 'รับชำระ', 'ชำระเงิน', 'qr', 'พร้อมเพย์', 'promptpay', 'card', 'approved', 'pos',
+  // ข้อมูลร้าน / นิติบุคคล / หัวบิล
+  'บริษัท', 'ห้างหุ้นส่วน', 'หจก', 'หสน', 'จำกัด', 'มหาชน', 'co.', 'ltd', 'company', 'สำนักงาน',
+  'เลขประจำตัว', 'เลขที่', 'ใบเสร็จ', 'ใบกำกับ', 'receipt', 'invoice', 'barcode', 'บาร์โค้ด',
+  'โทร', 'tel', 'โทรศัพท์', 'วันที่', 'date', 'เวลา', 'time', 'ที่อยู่', 'สาขา', 'branch',
+  'พนักงาน', 'cashier', 'แคชเชียร์', 'ขอบคุณ', 'thank', 'สมาชิก', 'member', 'แต้ม', 'grand',
+];
+
+// "ราคา" ต้องมีจุดทศนิยม (เช่น 120.00 / 1,234.50) — ตัด barcode / รหัส / เบอร์โทรออก
+const PRICE_RE = /\d{1,3}(?:,\d{3})*\.\d{1,2}|\d+\.\d{1,2}/g;
+// ตัวเลขทั่วไป (ใช้หาจำนวน/ราคาต่อหน่วย และลบออกจากชื่อ)
+const NUM_RE   = /\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?/g;
+const MAX_ITEM_PRICE = 10_000_000; // กันเลข barcode/รหัสภาษีหลุดมาเป็นราคา
+
+// แปลงเลขไทย ๐-๙ เป็น 0-9 ก่อนวิเคราะห์
+function normalizeThaiDigits(s: string): string {
+  return s.replace(/[๐-๙]/g, d => '๐๑๒๓๔๕๖๗๘๙'.indexOf(d).toString());
+}
+
+// แปลงข้อความ OCR เป็นรายการ { name, price (ราคา/หน่วย), quantity }
+function parseReceiptText(text: string): ItemDraft[] {
+  const items: ItemDraft[] = [];
+  const seen = new Set<string>();
+
+  for (const rawLine of normalizeThaiDigits(text).split(/\r?\n/)) {
+    const line = rawLine.replace(/\s+/g, ' ').trim();
+    if (line.length < 4) continue;
+    if (OCR_SKIP_KEYWORDS.some(k => line.toLowerCase().includes(k))) continue;
+
+    // มีเลขยาวผิดปกติ (barcode 13 หลัก / เลขผู้เสียภาษี) → ไม่ใช่บรรทัดสินค้า
+    if (/\d{9,}/.test(line.replace(/[,\s]/g, ''))) continue;
+
+    // ต้องมี "ราคา" ที่มีจุดทศนิยมในบรรทัด ไม่งั้นไม่ถือเป็นรายการสินค้า
+    const priceTokens = line.match(PRICE_RE);
+    if (!priceTokens) continue;
+    const amount = parseFloat(priceTokens[priceTokens.length - 1].replace(/,/g, '')); // ราคาท้ายบรรทัด
+    if (!(amount > 0) || amount > MAX_ITEM_PRICE) continue;
+
+    // จำนวน: รองรับ "x2", "2x", "จำนวน 2", "2 ชิ้น" ฯลฯ
+    let quantity = 1;
+    const qty = line.match(/(?:x|×|จำนวน|qty\.?)\s*(\d{1,3})|(\d{1,3})\s*(?:x|×|ชิ้น|อัน|ea\b)/i);
+    if (qty) quantity = parseInt(qty[1] || qty[2], 10) || 1;
+    if (quantity < 1 || quantity > 999) quantity = 1;
+
+    // ราคา/หน่วย: ถ้าจำนวน > 1 หาเลขที่ × จำนวนแล้วได้ยอดรวม (= ราคาต่อหน่วย)
+    let price = amount;
+    if (quantity > 1) {
+      const nums = (line.match(NUM_RE) || []).map(n => parseFloat(n.replace(/,/g, '')));
+      let unit = amount / quantity;
+      for (const v of nums) {
+        if (v > 0 && v !== amount && Math.abs(v * quantity - amount) < 0.5) { unit = v; break; }
+      }
+      price = Math.round(unit * 100) / 100;
+    }
+    if (!(price > 0)) continue;
+
+    // ชื่อ: ตัดตัวเลข/สัญลักษณ์/หน่วยออก เหลือเฉพาะข้อความ
+    const name = line
+      .replace(NUM_RE, ' ')
+      .replace(/(?:x|×|@|จำนวน|qty\.?|฿|บาท|[$£€])/gi, ' ')
+      .replace(/[|*•·▪–—_=()[\]{}<>"']+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/^[-.,:)\]]+\s*/, '')
+      .trim();
+
+    // ต้องมีตัวอักษรจริงอย่างน้อย 2 ตัว ไม่งั้นน่าจะเป็น noise
+    if (name.replace(/[^A-Za-zก-๙]/g, '').length < 2) continue;
+
+    const key = `${name}|${price}|${quantity}`;
+    if (seen.has(key)) continue; // กันรายการซ้ำ
+    seen.add(key);
+
+    items.push({ name, price, quantity });
+    if (items.length >= 60) break;
+  }
+  return items;
+}
+
+// เพิ่มความคมชัดก่อนส่งเข้า OCR: ขยายรูปเล็ก + แปลงเป็นโทนเทา + เพิ่มคอนทราสต์
+async function preprocessForOcr(dataUrl: string): Promise<string> {
+  try {
+    const img = await loadImage(dataUrl);
+    const maxSide = Math.max(img.width, img.height) || 1;
+    const scale = maxSide < 1800 ? Math.min(2, 1800 / maxSide) : Math.min(1, 2200 / maxSide);
+    const w = Math.max(1, Math.round(img.width * scale));
+    const h = Math.max(1, Math.round(img.height * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return dataUrl;
+    ctx.drawImage(img, 0, 0, w, h);
+
+    const imageData = ctx.getImageData(0, 0, w, h);
+    const d = imageData.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+      const c = Math.max(0, Math.min(255, (gray - 128) * 1.25 + 128)); // contrast boost
+      d[i] = d[i + 1] = d[i + 2] = c;
+    }
+    ctx.putImageData(imageData, 0, 0);
+    return canvas.toDataURL('image/png');
+  } catch {
+    return dataUrl; // ถ้าประมวลผลไม่ได้ ใช้รูปเดิม
+  }
+}
+
+export function ReceiptOcrButton({ images, onExtract }: {
+  images: string[];
+  onExtract: (items: ItemDraft[]) => number;
+}) {
+  const [busy, setBusy]   = useState(false);
+  const [label, setLabel] = useState('');
+  const [pct, setPct]     = useState(0);
+
+  const run = async () => {
+    if (images.length === 0) { alert('กรุณาแนบรูปใบเสร็จ / สลิป ก่อนกดอ่านอัตโนมัติ'); return; }
+    setBusy(true); setPct(0); setLabel('กำลังเตรียม…');
+
+    let worker: any = null;
+    try {
+      const Tesseract = await loadTesseract();
+      worker = await Tesseract.createWorker('tha+eng', 1, {
+        logger: (m: any) => {
+          if (m?.status) setLabel(OCR_STATUS_TH[m.status] ?? 'กำลังประมวลผล…');
+          if (m?.status === 'recognizing text' && typeof m.progress === 'number') {
+            setPct(Math.round(m.progress * 100));
+          }
+        },
+      });
+      // ตั้งค่าให้เหมาะกับใบเสร็จ: อ่านเป็นคอลัมน์เดียว + รักษาช่องว่างระหว่างคำ
+      try {
+        await worker.setParameters({
+          tessedit_pageseg_mode: '4',      // single column of text of variable sizes
+          preserve_interword_spaces: '1',
+        });
+      } catch { /* รุ่นไลบรารีไม่รองรับก็ข้ามไป */ }
+
+      const all: ItemDraft[] = [];
+      for (let i = 0; i < images.length; i++) {
+        setLabel(images.length > 1 ? `กำลังอ่านรูปที่ ${i + 1}/${images.length}…` : 'กำลังอ่านใบเสร็จ…');
+        const prepared = await preprocessForOcr(images[i]);
+        const { data } = await worker.recognize(prepared);
+        all.push(...parseReceiptText(data?.text || ''));
+      }
+
+      if (all.length === 0) {
+        alert('อ่านรายการจากใบเสร็จไม่สำเร็จ\n\nลองใช้รูปที่คมชัด ถ่ายตรง และมีแสงเพียงพอ แล้วลองอีกครั้ง — หรือกรอกรายการเองได้');
+        return;
+      }
+      const added = onExtract(all);
+      alert(`เพิ่ม ${added} รายการจากใบเสร็จแล้ว ✓\n\nกรุณาตรวจสอบชื่อ / ราคา / จำนวน ให้ถูกต้องก่อนบันทึก\n(การอ่านอัตโนมัติอาจคลาดเคลื่อนได้ตามคุณภาพของรูป)`);
+    } catch (err) {
+      console.error('OCR ใบเสร็จล้มเหลว', err);
+      alert(err instanceof Error ? err.message : 'อ่านใบเสร็จไม่สำเร็จ กรุณาลองใหม่');
+    } finally {
+      if (worker) { try { await worker.terminate(); } catch { /* ignore */ } }
+      setBusy(false); setPct(0); setLabel('');
+    }
+  };
+
+  return (
+    <div className="mt-2">
+      <button type="button" onClick={run} disabled={busy}
+        className={`w-full inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-bold transition-colors ${
+          busy ? 'border-slate-200 bg-slate-50 text-slate-400 cursor-wait'
+               : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}>
+        {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ScanText className="w-4 h-4" />}
+        {busy ? `${label || 'กำลังประมวลผล…'}${pct ? ` ${pct}%` : ''}` : 'อ่านใบเสร็จอัตโนมัติ → กรอกรายการให้'}
+      </button>
+      {busy && (
+        <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+          <div className="h-full rounded-full bg-blue-500 transition-all" style={{ width: `${pct}%` }} />
+        </div>
+      )}
+      <p className="mt-1 text-[11px] text-slate-400">
+        ประมวลผลในเครื่อง ไม่ส่งรูปออกภายนอก • ผลลัพธ์เป็นร่าง โปรดตรวจสอบก่อนบันทึก
+      </p>
+    </div>
+  );
+}
+
+// ─── Receipt AI (Gemini 2.5 — วิเคราะห์ใบเสร็จด้วย AI) ─────────────────────────
+//
+// ใช้ Google Gemini 2.5 (vision) อ่านใบเสร็จ/สลิป — แม่นกว่า OCR มากกับภาษาไทย
+// ต้องมี API key: ตั้งผ่าน env (VITE_GEMINI_API_KEY) หรือกรอกครั้งแรกแล้วเก็บใน localStorage
+// หมายเหตุ: แอปนี้เป็น client-side คีย์จะอยู่ในเครื่องผู้ใช้ — เหมาะกับใช้งานภายในองค์กร
+
+const GEMINI_MODEL = 'gemini-2.5-flash';
+const GEMINI_KEY_STORAGE = 'gemini_api_key';
+
+const AI_RECEIPT_PROMPT = [
+  'คุณคือผู้ช่วยกรอกใบเบิกจ่ายของมหาวิทยาลัย วิเคราะห์รูปใบเสร็จ/สลิปทั้งหมดที่แนบมา แล้วดึงเฉพาะ "รายการสินค้า/บริการ" ออกมา',
+  'กติกา:',
+  '- เอาเฉพาะรายการสินค้าจริง ห้ามใส่: ยอดรวม, ยอดสุทธิ, ภาษีมูลค่าเพิ่ม/VAT, ส่วนลด, เงินทอน, เงินรับ, ชื่อร้าน, ที่อยู่, เลขที่บิล หรือหัว/ท้ายบิล',
+  '- name: ชื่อรายการตามที่อ่านได้ สะกดภาษาไทย/อังกฤษให้ถูกต้องและเป็นธรรมชาติ',
+  '- price: ราคาต่อ 1 หน่วย เป็นตัวเลขล้วน (ไม่มีสัญลักษณ์เงิน) ถ้าใบเสร็จให้ราคารวมของรายการมา ให้หารด้วยจำนวนเพื่อได้ราคาต่อหน่วย',
+  '- quantity: จำนวน เป็นจำนวนเต็ม ถ้าไม่ระบุให้เป็น 1',
+  '- ถ้ามีใบเสร็จหลายใบ ให้รวมรายการจากทุกใบ',
+  '- ถ้าอ่านไม่ออกหรือไม่มีรายการ ให้คืน items เป็น []',
+  'ตอบกลับเป็น JSON ตาม schema เท่านั้น ห้ามมีข้อความอื่น',
+].join('\n');
+
+const RECEIPT_SCHEMA: any = {
+  type: Type.OBJECT,
+  properties: {
+    items: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          name:     { type: Type.STRING,  description: 'ชื่อรายการสินค้า/บริการ' },
+          price:    { type: Type.NUMBER,  description: 'ราคาต่อหน่วย เป็นตัวเลข' },
+          quantity: { type: Type.INTEGER, description: 'จำนวน เป็นจำนวนเต็ม (ไม่ระบุ = 1)' },
+        },
+        required: ['name', 'price', 'quantity'],
+      },
+    },
+  },
+  required: ['items'],
+};
+
+function getGeminiKey(): string {
+  const envKey = (import.meta as any).env?.VITE_GEMINI_API_KEY as string | undefined;
+  return (envKey || localStorage.getItem(GEMINI_KEY_STORAGE) || '').trim();
+}
+
+function ensureGeminiKey(): string | null {
+  const existing = getGeminiKey();
+  if (existing) return existing;
+  const entered = window.prompt(
+    'วาง Gemini API key (จะบันทึกไว้ในเครื่องนี้)\n\nขอคีย์ฟรีได้ที่ https://aistudio.google.com/apikey',
+  );
+  const key = (entered || '').trim();
+  if (!key) return null;
+  localStorage.setItem(GEMINI_KEY_STORAGE, key);
+  return key;
+}
+
+function dataUrlToInline(dataUrl: string): { mimeType: string; data: string } | null {
+  const m = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+  return m ? { mimeType: m[1], data: m[2] } : null;
+}
+
+function sanitizeAiItems(parsed: any): ItemDraft[] {
+  const arr = Array.isArray(parsed?.items) ? parsed.items : Array.isArray(parsed) ? parsed : [];
+  const out: ItemDraft[] = [];
+  for (const it of arr) {
+    const name  = String(it?.name ?? '').trim();
+    const price = Number(it?.price);
+    let quantity = Math.round(Number(it?.quantity));
+    if (!name || !isFinite(price) || price <= 0) continue;
+    if (!isFinite(quantity) || quantity < 1) quantity = 1;
+    if (quantity > 9999) quantity = 1;
+    out.push({ name, price: Math.round(price * 100) / 100, quantity });
+  }
+  return out;
+}
+
+export function ReceiptAiButton({ images, onExtract }: {
+  images: string[];
+  onExtract: (items: ItemDraft[]) => number;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  const run = async () => {
+    if (images.length === 0) { alert('กรุณาแนบรูปใบเสร็จ / สลิป ก่อนใช้ AI วิเคราะห์'); return; }
+    const apiKey = ensureGeminiKey();
+    if (!apiKey) return;
+
+    setBusy(true);
+    try {
+      const parts: any[] = [{ text: AI_RECEIPT_PROMPT }];
+      for (const img of images) {
+        const inline = dataUrlToInline(img);
+        if (inline) parts.push({ inlineData: inline });
+      }
+      if (parts.length === 1) { alert('รูปภาพไม่อยู่ในรูปแบบที่รองรับการวิเคราะห์'); return; }
+
+      const ai = new GoogleGenAI({ apiKey });
+      const response = await ai.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: [{ role: 'user', parts }],
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: RECEIPT_SCHEMA,
+          temperature: 0,
+        },
+      });
+
+      let parsed: any;
+      try { parsed = JSON.parse(response.text ?? ''); }
+      catch { alert('AI ตอบกลับในรูปแบบที่อ่านไม่ได้ กรุณาลองใหม่อีกครั้ง'); return; }
+
+      const items = sanitizeAiItems(parsed);
+      if (items.length === 0) {
+        alert('AI ไม่พบรายการสินค้าในใบเสร็จ — ลองใช้รูปที่ชัดขึ้น หรือกรอกเอง');
+        return;
+      }
+      const added = onExtract(items);
+      alert(`AI เพิ่ม ${added} รายการจากใบเสร็จแล้ว ✓\n\nกรุณาตรวจสอบชื่อ / ราคา / จำนวน ให้ถูกต้องก่อนบันทึก`);
+    } catch (err: any) {
+      console.error('Gemini วิเคราะห์ใบเสร็จล้มเหลว', err);
+      const msg = String(err?.message || err);
+      if (/api[\s_-]?key|permission|unauthor|invalid|quota|\b40[0-9]\b/i.test(msg)) {
+        if (confirm('เรียก Gemini ไม่สำเร็จ — อาจเป็นเพราะ API key ไม่ถูกต้องหรือหมดโควตา\n\nต้องการล้างคีย์เดิมเพื่อกรอกใหม่หรือไม่?')) {
+          localStorage.removeItem(GEMINI_KEY_STORAGE);
+        }
+      } else {
+        alert('AI วิเคราะห์ไม่สำเร็จ: ' + msg);
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button type="button" onClick={run} disabled={busy}
+      className={`mt-2 w-full inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold text-white transition-colors ${
+        busy ? 'bg-violet-300 cursor-wait'
+             : 'bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-700 hover:to-fuchsia-700'}`}>
+      {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+      {busy ? 'AI กำลังวิเคราะห์ใบเสร็จ…' : 'AI วิเคราะห์ใบเสร็จ (Gemini 2.5) — แม่นที่สุด'}
+    </button>
+  );
+}
+
 // ─── Receipt Viewer ───────────────────────────────────────────────────────────
 
 export function ReceiptViewer({ images }: { images?: string[] }) {
@@ -501,6 +871,15 @@ export function ExpenseRequests() {
     setReqSigData(null);
     setCreateReceipts([]);
     setCreateOpen(true);
+  };
+
+  // เติมรายการที่อ่านได้จากใบเสร็จ (OCR) ต่อท้ายรายการที่กรอกไว้แล้ว
+  const fillItemsFromOcr = (ocrItems: ItemDraft[]): number => {
+    setCreateItems(prev => {
+      const existing = prev.filter(i => i.name.trim() !== '' || i.price > 0);
+      return [...existing, ...ocrItems];
+    });
+    return ocrItems.length;
   };
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -813,9 +1192,11 @@ export function ExpenseRequests() {
             </Field>
             <ItemEditor items={createItems} onChange={setCreateItems} />
 
-            {/* Receipt attachment */}
+            {/* Receipt attachment + อ่านอัตโนมัติ (OCR ในเครื่อง / AI Gemini) */}
             <div className="pt-2 border-t border-slate-100">
               <ReceiptUploader images={createReceipts} onChange={setCreateReceipts} />
+              <ReceiptAiButton images={createReceipts} onExtract={fillItemsFromOcr} />
+              <ReceiptOcrButton images={createReceipts} onExtract={fillItemsFromOcr} />
             </div>
 
             {/* Signature section */}
