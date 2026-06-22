@@ -236,14 +236,14 @@ export function Layout() {
       {/* Mobile backdrop */}
       {isSidebarOpen && showSidebar && (
         <div
-          className="fixed inset-0 z-30 bg-slate-900 bg-opacity-75 transition-opacity md:hidden"
+          className="fixed inset-0 z-30 bg-slate-900/10 backdrop-blur-sm transition-opacity md:hidden"
           onClick={() => setIsSidebarOpen(false)}
         />
       )}
 
       {/* Profile Image Modal */}
       {showImageModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/10 backdrop-blur-sm">
           <div className="bg-white rounded-xl shadow-xl w-80 p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-bold text-slate-800">เปลี่ยนรูปโปรไฟล์</h3>

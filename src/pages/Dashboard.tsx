@@ -318,7 +318,7 @@ export function Dashboard() {
       {selectedExpense && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
-            <div className="fixed inset-0 transition-opacity bg-slate-900 bg-opacity-75" onClick={closeExpenseModal} />
+            <div className="fixed inset-0 transition-opacity bg-slate-900/10 backdrop-blur-sm" onClick={closeExpenseModal} />
             <div className="relative inline-block w-full max-w-2xl p-6 overflow-y-auto text-left align-middle transition-all transform bg-white shadow-xl rounded-xl border border-slate-200">
               {/* Header */}
               <div className="flex justify-between items-start mb-1">
@@ -438,7 +438,7 @@ export function Dashboard() {
       {selectedReq && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
-            <div className="fixed inset-0 transition-opacity bg-slate-900 bg-opacity-75" onClick={closeModal} />
+            <div className="fixed inset-0 transition-opacity bg-slate-900/10 backdrop-blur-sm" onClick={closeModal} />
             <div className="relative inline-block w-full max-w-2xl px-4 pt-5 pb-4 overflow-y-auto text-left align-bottom transition-all transform bg-white rounded-xl shadow-xl sm:my-8 sm:align-middle sm:p-6 border border-slate-200">
               <h3 className="text-lg font-bold leading-6 text-slate-900 mb-4">รายละเอียด {selectedReq.title}</h3>
               <div className="text-sm text-slate-500 space-y-2">
