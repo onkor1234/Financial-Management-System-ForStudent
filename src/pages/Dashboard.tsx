@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { api, DashboardData, PaymentRequest, ExpenseRequest, ExpenseItem, formatMoney, getCollectionProgress } from '../lib/api';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
 import {
   CheckCircle, XCircle, Banknote, ClipboardList, Clock, Users,
   TrendingUp, Receipt, PlusCircle, Paperclip, Printer, FileText,
+  ChevronLeft, ChevronRight, ChevronDown, ArrowDownUp, CalendarDays, ArrowUpRight,
 } from 'lucide-react';
 import { printReport, ReceiptViewer } from './ExpenseRequests';
 
@@ -18,6 +19,72 @@ const STATUS_LABEL: Record<string, string> = {
   approved: 'อนุมัติแล้ว',
   rejected: 'ปฏิเสธแล้ว',
 };
+
+// ─── Sorting / pagination helpers ────────────────────────────────────────────
+type SortKey = 'latest' | 'oldest' | 'most' | 'least';
+const PAGE_SIZE = 5;
+
+const SORT_OPTIONS: { value: SortKey; label: string }[] = [
+  { value: 'latest', label: 'ล่าสุด' },
+  { value: 'oldest', label: 'เก่าสุด' },
+  { value: 'most',   label: 'มากสุด' },
+  { value: 'least',  label: 'น้อยสุด' },
+];
+
+function sortItems<T extends { created_at: string }>(items: T[], key: SortKey, amountOf: (t: T) => number): T[] {
+  const arr = [...items];
+  switch (key) {
+    case 'latest': arr.sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at)); break;
+    case 'oldest': arr.sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at)); break;
+    case 'most':   arr.sort((a, b) => amountOf(b) - amountOf(a)); break;
+    case 'least':  arr.sort((a, b) => amountOf(a) - amountOf(b)); break;
+  }
+  return arr;
+}
+
+function SortControl({ value, onChange, accent }: { value: SortKey; onChange: (v: SortKey) => void; accent: string }) {
+  return (
+    <div className="relative shrink-0">
+      <ArrowDownUp className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value as SortKey)}
+        className={`appearance-none pl-8 pr-7 py-1.5 text-xs font-bold text-slate-600 bg-white border border-slate-200 rounded-lg cursor-pointer outline-none focus:ring-2 ${accent} hover:border-slate-300 transition-colors`}
+      >
+        {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+      <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+    </div>
+  );
+}
+
+function Pager({ page, totalPages, total, onPage }: { page: number; totalPages: number; total: number; onPage: (p: number) => void }) {
+  if (totalPages <= 1) return null;
+  const from = page * PAGE_SIZE + 1;
+  const to = Math.min(total, (page + 1) * PAGE_SIZE);
+  return (
+    <div className="flex items-center justify-between gap-2 px-4 sm:px-5 py-3 border-t border-slate-100 bg-slate-50/60">
+      <span className="text-[11px] text-slate-400 font-medium hidden xs:inline sm:inline">{from}–{to} จาก {total}</span>
+      <div className="flex items-center gap-1.5 ml-auto">
+        <button
+          onClick={() => onPage(page - 1)}
+          disabled={page === 0}
+          className="inline-flex items-center gap-1 pl-2 pr-2.5 py-1.5 text-xs font-bold rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          <ChevronLeft className="w-4 h-4" /> ก่อนหน้า
+        </button>
+        <span className="text-xs font-bold text-slate-500 px-1 tabular-nums">{page + 1}/{totalPages}</span>
+        <button
+          onClick={() => onPage(page + 1)}
+          disabled={page >= totalPages - 1}
+          className="inline-flex items-center gap-1 pl-2.5 pr-2 py-1.5 text-xs font-bold rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          ถัดไป <ChevronRight className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export function Dashboard() {
   const emptyData: DashboardData = {
@@ -36,6 +103,12 @@ export function Dashboard() {
   const [detailSearch, setDetailSearch] = useState('');
   const [detailStatusFilter, setDetailStatusFilter] = useState<'all' | 'paid' | 'unpaid'>('all');
   const [detailData, setDetailData]   = useState<{ student: { id: number; student_id: string; first_name: string; last_name: string; section: string }; payment: { is_paid: boolean } | null }[]>([]);
+
+  // Sort + pagination state for the two lists
+  const [paymentSort, setPaymentSort] = useState<SortKey>('latest');
+  const [paymentPage, setPaymentPage] = useState(0);
+  const [expenseSort, setExpenseSort] = useState<SortKey>('latest');
+  const [expensePage, setExpensePage] = useState(0);
 
   useEffect(() => { loadData(); }, []);
 
@@ -105,147 +178,182 @@ export function Dashboard() {
   });
   const uniqueDetailSections = Array.from(new Set(detailData.map(d => d.student.section)));
 
+  // ── Derived sorted + paged lists ──────────────────────────────────────────
+  const sortedPayments = useMemo(
+    () => sortItems(data.paymentRequests, paymentSort, r => r.amount_per_person),
+    [data.paymentRequests, paymentSort]
+  );
+  const paymentTotalPages = Math.max(1, Math.ceil(sortedPayments.length / PAGE_SIZE));
+  const paymentPageClamped = Math.min(paymentPage, paymentTotalPages - 1);
+  const pagedPayments = sortedPayments.slice(paymentPageClamped * PAGE_SIZE, paymentPageClamped * PAGE_SIZE + PAGE_SIZE);
+
+  const sortedExpenses = useMemo(
+    () => sortItems(data.recentExpenses, expenseSort, e => e.total_amount),
+    [data.recentExpenses, expenseSort]
+  );
+  const expenseTotalPages = Math.max(1, Math.ceil(sortedExpenses.length / PAGE_SIZE));
+  const expensePageClamped = Math.min(expensePage, expenseTotalPages - 1);
+  const pagedExpenses = sortedExpenses.slice(expensePageClamped * PAGE_SIZE, expensePageClamped * PAGE_SIZE + PAGE_SIZE);
+
+  // ── Stat cards config ─────────────────────────────────────────────────────
+  const stats = [
+    {
+      label: 'งบประมาณคงเหลือ',
+      value: `฿${formatMoney(data.totalBudget)}`,
+      sub: 'งบประมาณปัจจุบัน', subIcon: TrendingUp,
+      icon: Banknote, from: 'from-emerald-400', to: 'to-emerald-600',
+      glow: 'shadow-emerald-500/30', bar: 'from-emerald-400 to-emerald-500', blob: 'bg-emerald-50',
+    },
+    {
+      label: 'รายการเก็บเงินค้าง',
+      value: data.unpaidCount.toLocaleString(),
+      sub: 'รายการที่ยังไม่ได้ชำระ', subIcon: Clock,
+      icon: ClipboardList, from: 'from-rose-400', to: 'to-rose-600',
+      glow: 'shadow-rose-500/30', bar: 'from-rose-400 to-rose-500', blob: 'bg-rose-50',
+    },
+    {
+      label: 'รออนุมัติเบิกเงิน',
+      value: `฿${formatMoney(data.pendingExpenseTotal)}`,
+      sub: `${data.pendingExpenseCount} รายการรออนุมัติ`, subIcon: Clock,
+      icon: Receipt, from: 'from-amber-400', to: 'to-orange-500',
+      glow: 'shadow-amber-500/30', bar: 'from-amber-400 to-orange-500', blob: 'bg-amber-50',
+    },
+    {
+      label: 'นักศึกษาทั้งหมด',
+      value: `${data.studentCount.toLocaleString()} คน`,
+      sub: `แบ่งเป็น ${data.sectionCount} กลุ่มเรียน`, subIcon: PlusCircle,
+      icon: Users, from: 'from-blue-400', to: 'to-indigo-600',
+      glow: 'shadow-blue-500/30', bar: 'from-blue-400 to-indigo-500', blob: 'bg-blue-50',
+    },
+  ];
+
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* งบประมาณคงเหลือ */}
-        <div className="relative bg-gradient-to-br from-emerald-500 to-emerald-600 p-5 rounded-2xl shadow-lg overflow-hidden">
-          <div className="absolute -right-4 -top-4 w-24 h-24 bg-white/10 rounded-full" />
-          <div className="absolute -right-2 -bottom-6 w-32 h-32 bg-white/10 rounded-full" />
-          <div className="relative">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs text-emerald-100 font-semibold uppercase tracking-wider">งบประมาณคงเหลือ</p>
-              <div className="bg-white/20 p-2 rounded-lg">
-                <Banknote className="w-5 h-5 text-white" />
-              </div>
-            </div>
-            <p className="text-3xl font-bold text-white">฿{formatMoney(data.totalBudget)}</p>
-            <p className="text-xs text-emerald-100 mt-2 flex items-center gap-1">
-              <TrendingUp className="w-3 h-3" /> งบประมาณปัจจุบัน
-            </p>
-          </div>
+      {/* ── Page header ─────────────────────────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-800 tracking-tight">แดชบอร์ด</h1>
+          <p className="text-sm text-slate-500 mt-1">ภาพรวมการบริหารงบประมาณคณะ</p>
         </div>
-
-        {/* รายการเก็บเงินที่ค้าง */}
-        <div className="relative bg-gradient-to-br from-rose-500 to-rose-600 p-5 rounded-2xl shadow-lg overflow-hidden">
-          <div className="absolute -right-4 -top-4 w-24 h-24 bg-white/10 rounded-full" />
-          <div className="absolute -right-2 -bottom-6 w-32 h-32 bg-white/10 rounded-full" />
-          <div className="relative">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs text-rose-100 font-semibold uppercase tracking-wider">รายการเก็บเงินค้าง</p>
-              <div className="bg-white/20 p-2 rounded-lg">
-                <ClipboardList className="w-5 h-5 text-white" />
-              </div>
-            </div>
-            <p className="text-3xl font-bold text-white">{data.unpaidCount.toLocaleString()}</p>
-            <p className="text-xs text-rose-100 mt-2">รายการที่ยังไม่ได้ชำระ</p>
-          </div>
-        </div>
-
-        {/* รออนุมัติเบิกเงิน */}
-        <div className="relative bg-gradient-to-br from-amber-400 to-amber-500 p-5 rounded-2xl shadow-lg overflow-hidden">
-          <div className="absolute -right-4 -top-4 w-24 h-24 bg-white/10 rounded-full" />
-          <div className="absolute -right-2 -bottom-6 w-32 h-32 bg-white/10 rounded-full" />
-          <div className="relative">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs text-amber-900/70 font-semibold uppercase tracking-wider">รออนุมัติเบิกเงิน</p>
-              <div className="bg-white/20 p-2 rounded-lg">
-                <Receipt className="w-5 h-5 text-white" />
-              </div>
-            </div>
-            <p className="text-3xl font-bold text-white">฿{formatMoney(data.pendingExpenseTotal)}</p>
-            <p className="text-xs text-amber-900/60 mt-2 flex items-center gap-1">
-              <Clock className="w-3 h-3" /> {data.pendingExpenseCount} รายการรออนุมัติ
-            </p>
-          </div>
-        </div>
-
-        {/* นักศึกษาทั้งหมด */}
-        <div className="relative bg-gradient-to-br from-blue-500 to-blue-600 p-5 rounded-2xl shadow-lg overflow-hidden">
-          <div className="absolute -right-4 -top-4 w-24 h-24 bg-white/10 rounded-full" />
-          <div className="absolute -right-2 -bottom-6 w-32 h-32 bg-white/10 rounded-full" />
-          <div className="relative">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs text-blue-100 font-semibold uppercase tracking-wider">นักศึกษาทั้งหมด</p>
-              <div className="bg-white/20 p-2 rounded-lg">
-                <Users className="w-5 h-5 text-white" />
-              </div>
-            </div>
-            <p className="text-3xl font-bold text-white">{data.studentCount.toLocaleString()} <span className="text-xl font-semibold">คน</span></p>
-            <p className="text-xs text-blue-100 mt-2 flex items-center gap-1">
-              <PlusCircle className="w-3 h-3" /> แบ่งเป็น {data.sectionCount} กลุ่มเรียน
-            </p>
-          </div>
+        <div className="inline-flex items-center gap-2 self-start sm:self-auto bg-white border border-slate-200 rounded-xl px-3.5 py-2 shadow-sm">
+          <CalendarDays className="w-4 h-4 text-blue-500" />
+          <span className="text-sm font-semibold text-slate-600">{format(new Date(), 'EEEE d MMMM yyyy', { locale: th })}</span>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* รายการเรียกเก็บเงิน */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
-          <div className="p-5 border-b border-slate-100 flex items-center gap-3 bg-slate-50/50">
-            <div className="bg-rose-100 p-2 rounded-lg">
-              <ClipboardList className="w-4 h-4 text-rose-600" />
+      {/* ── Stat cards ──────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-5">
+        {stats.map((s, i) => (
+          <div
+            key={i}
+            className="group relative bg-white rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden"
+          >
+            <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${s.bar}`} />
+            <div className={`absolute -right-7 -bottom-7 w-28 h-28 ${s.blob} rounded-full group-hover:scale-125 transition-transform duration-500`} />
+            <div className="relative p-5">
+              <div className="flex items-start justify-between">
+                <div className={`bg-gradient-to-br ${s.from} ${s.to} p-2.5 rounded-xl shadow-lg ${s.glow}`}>
+                  <s.icon className="w-5 h-5 text-white" />
+                </div>
+                <ArrowUpRight className="w-4 h-4 text-slate-300 group-hover:text-slate-400 transition-colors" />
+              </div>
+              <p className="mt-4 text-[11px] font-bold text-slate-400 uppercase tracking-wider">{s.label}</p>
+              <p className="mt-1 text-2xl sm:text-[1.7rem] leading-tight font-extrabold text-slate-800">{s.value}</p>
+              <p className="mt-1.5 text-xs text-slate-400 flex items-center gap-1">
+                <s.subIcon className="w-3 h-3" /> {s.sub}
+              </p>
             </div>
-            <h3 className="font-bold text-slate-700">รายการเรียกเก็บเงินที่เปิดอยู่</h3>
           </div>
-          <div className="flex-1 overflow-auto">
-            <table className="w-full text-left">
-              <thead className="text-xs font-bold text-slate-500 uppercase bg-slate-50">
-                <tr>
-                  <th className="px-6 py-3">รายการ</th>
-                  <th className="px-6 py-3">กลุ่มเรียน</th>
-                  <th className="px-6 py-3">ยอด/คน</th>
-                  <th className="px-6 py-3">สถานะ</th>
-                </tr>
-              </thead>
-              <tbody className="text-sm divide-y divide-slate-100">
-                {data.paymentRequests.length === 0 ? (
-                  <tr><td colSpan={4} className="px-6 py-4 text-center text-slate-500">ไม่มีรายการเรียกเก็บเงิน</td></tr>
-                ) : data.paymentRequests.map(req => {
-                  const prog = getCollectionProgress(req);
-                  return (
-                  <tr key={req.id} className="hover:bg-slate-50 cursor-pointer" onClick={() => openModal(req)}>
-                    <td className="px-6 py-4 font-medium text-slate-800">{req.title}</td>
-                    <td className="px-6 py-4 text-slate-600">{req.target_sections.join(', ')}</td>
-                    <td className="px-6 py-4 font-bold text-slate-800">฿{formatMoney(req.amount_per_person)}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6">
+        {/* ── รายการเรียกเก็บเงินที่เปิดอยู่ ──────────────────────────────────── */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+          <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between gap-2 bg-gradient-to-r from-rose-50/70 to-transparent">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="bg-gradient-to-br from-rose-400 to-rose-600 p-2 rounded-xl shadow-lg shadow-rose-500/30 shrink-0">
+                <ClipboardList className="w-4 h-4 text-white" />
+              </div>
+              <h3 className="font-bold text-slate-700 text-sm sm:text-base truncate">รายการเรียกเก็บเงินที่เปิดอยู่</h3>
+            </div>
+            <SortControl value={paymentSort} onChange={v => { setPaymentSort(v); setPaymentPage(0); }} accent="focus:ring-rose-400/40" />
+          </div>
+
+          <div className="flex-1 divide-y divide-slate-100">
+            {sortedPayments.length === 0 ? (
+              <div className="px-6 py-12 text-center text-slate-400 text-sm">ไม่มีรายการเรียกเก็บเงิน</div>
+            ) : pagedPayments.map(req => {
+              const prog = getCollectionProgress(req);
+              const pct = prog.total > 0 ? Math.min(100, Math.round((prog.paid / prog.total) * 100)) : 0;
+              return (
+                <button
+                  key={req.id}
+                  onClick={() => openModal(req)}
+                  className="w-full text-left px-4 sm:px-5 py-4 hover:bg-rose-50/40 transition-colors group"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-slate-800 text-sm truncate group-hover:text-rose-700 transition-colors">{req.title}</p>
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {req.target_sections.map(sec => (
+                          <span key={sec} className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-500">{sec}</span>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="font-bold text-slate-900 text-sm">฿{formatMoney(req.amount_per_person)}</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">ต่อคน</p>
+                    </div>
+                  </div>
+
+                  {/* progress bar */}
+                  <div className="mt-3">
+                    <div className="flex items-center justify-between mb-1">
                       {prog.complete ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-green-100 text-green-700">
-                          <CheckCircle className="w-3.5 h-3.5" /> ปิดยอดแล้ว · {prog.total} คน · ฿{formatMoney(prog.collectedAmount)}
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-green-600">
+                          <CheckCircle className="w-3.5 h-3.5" /> ปิดยอดแล้ว · ฿{formatMoney(prog.collectedAmount)}
                         </span>
                       ) : (
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-700">
-                          {prog.paid}/{prog.total} คน
-                        </span>
+                        <span className="text-[11px] font-semibold text-slate-500">เก็บแล้ว {prog.paid}/{prog.total} คน</span>
                       )}
-                    </td>
-                  </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                      <span className="text-[11px] font-bold text-slate-600 tabular-nums">{pct}%</span>
+                    </div>
+                    <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${prog.complete ? 'bg-gradient-to-r from-green-400 to-emerald-500' : 'bg-gradient-to-r from-rose-400 to-rose-500'}`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
           </div>
+
+          <Pager page={paymentPageClamped} totalPages={paymentTotalPages} total={sortedPayments.length} onPage={setPaymentPage} />
         </div>
 
-        {/* รายการเบิกจ่ายล่าสุด — card layout */}
+        {/* ── รายการเบิกจ่ายล่าสุด ───────────────────────────────────────────── */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
-          <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-            <div className="flex items-center gap-3">
-              <div className="bg-amber-100 p-2 rounded-lg">
-                <Receipt className="w-4 h-4 text-amber-600" />
+          <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between gap-2 bg-gradient-to-r from-amber-50/70 to-transparent">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="bg-gradient-to-br from-amber-400 to-orange-500 p-2 rounded-xl shadow-lg shadow-amber-500/30 shrink-0">
+                <Receipt className="w-4 h-4 text-white" />
               </div>
-              <h3 className="font-bold text-slate-700">รายการเบิกจ่ายล่าสุด</h3>
+              <h3 className="font-bold text-slate-700 text-sm sm:text-base truncate">รายการเบิกจ่ายล่าสุด</h3>
             </div>
-            <span className="text-xs text-slate-400">{data.recentExpenses.length} รายการ</span>
+            <SortControl value={expenseSort} onChange={v => { setExpenseSort(v); setExpensePage(0); }} accent="focus:ring-amber-400/40" />
           </div>
-          <div className="flex-1 overflow-auto divide-y divide-slate-100">
-            {data.recentExpenses.length === 0 ? (
-              <div className="px-6 py-8 text-center text-slate-400 text-sm">ไม่มีรายการเบิกจ่าย</div>
-            ) : data.recentExpenses.map(exp => (
+
+          <div className="flex-1 divide-y divide-slate-100">
+            {sortedExpenses.length === 0 ? (
+              <div className="px-6 py-12 text-center text-slate-400 text-sm">ไม่มีรายการเบิกจ่าย</div>
+            ) : pagedExpenses.map(exp => (
               <button
                 key={exp.id}
                 onClick={() => openExpenseModal(exp)}
-                className="w-full text-left px-5 py-4 hover:bg-slate-50 transition-colors group"
+                className="w-full text-left px-4 sm:px-5 py-4 hover:bg-amber-50/40 transition-colors group"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
@@ -259,10 +367,10 @@ export function Dashboard() {
                         </span>
                       )}
                     </div>
-                    <p className="font-semibold text-slate-800 text-sm truncate group-hover:text-blue-700 transition-colors">
+                    <p className="font-semibold text-slate-800 text-sm truncate group-hover:text-amber-700 transition-colors">
                       {exp.title}
                     </p>
-                    <p className="text-xs text-slate-400 mt-0.5">
+                    <p className="text-xs text-slate-400 mt-0.5 truncate">
                       {exp.requester_name || exp.creator_name || '—'}
                       {exp.creator_dept ? ` · ${exp.creator_dept}` : ''}
                     </p>
@@ -277,18 +385,22 @@ export function Dashboard() {
               </button>
             ))}
           </div>
+
+          <Pager page={expensePageClamped} totalPages={expenseTotalPages} total={sortedExpenses.length} onPage={setExpensePage} />
         </div>
       </div>
 
-      {/* รายการเติมงบประมาณล่าสุด */}
+      {/* ── รายการเติมงบประมาณล่าสุด ─────────────────────────────────────────── */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
-        <div className="p-5 border-b border-slate-100 flex items-center gap-3 bg-slate-50/50">
-          <div className="bg-emerald-100 p-2 rounded-lg">
-            <Banknote className="w-4 h-4 text-emerald-600" />
+        <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center gap-3 bg-gradient-to-r from-emerald-50/70 to-transparent">
+          <div className="bg-gradient-to-br from-emerald-400 to-emerald-600 p-2 rounded-xl shadow-lg shadow-emerald-500/30">
+            <Banknote className="w-4 h-4 text-white" />
           </div>
-          <h3 className="font-bold text-slate-700">รายการเติมงบประมาณล่าสุด</h3>
+          <h3 className="font-bold text-slate-700 text-sm sm:text-base">รายการเติมงบประมาณล่าสุด</h3>
         </div>
-        <div className="flex-1 overflow-auto">
+
+        {/* Desktop / tablet: table */}
+        <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-left">
             <thead className="text-xs font-bold text-slate-500 uppercase bg-slate-50">
               <tr>
@@ -299,9 +411,9 @@ export function Dashboard() {
             </thead>
             <tbody className="text-sm divide-y divide-slate-100">
               {data.budgetAdditions.length === 0 ? (
-                <tr><td colSpan={3} className="px-6 py-4 text-center text-slate-500">ไม่พบประวัติการเติมงบประมาณ</td></tr>
+                <tr><td colSpan={3} className="px-6 py-6 text-center text-slate-400">ไม่พบประวัติการเติมงบประมาณ</td></tr>
               ) : data.budgetAdditions.map(addition => (
-                <tr key={addition.id} className="hover:bg-slate-50">
+                <tr key={addition.id} className="hover:bg-emerald-50/40 transition-colors">
                   <td className="px-6 py-4 font-medium text-slate-800">{addition.description}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-green-600 font-bold">+฿{formatMoney(addition.amount)}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-slate-500">
@@ -311,6 +423,21 @@ export function Dashboard() {
               ))}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile: card list */}
+        <div className="sm:hidden divide-y divide-slate-100">
+          {data.budgetAdditions.length === 0 ? (
+            <div className="px-6 py-8 text-center text-slate-400 text-sm">ไม่พบประวัติการเติมงบประมาณ</div>
+          ) : data.budgetAdditions.map(addition => (
+            <div key={addition.id} className="px-4 py-4 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-medium text-slate-800 text-sm truncate">{addition.description}</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">{format(new Date(addition.created_at), 'dd MMM yyyy')}</p>
+              </div>
+              <p className="shrink-0 text-green-600 font-bold text-sm">+฿{formatMoney(addition.amount)}</p>
+            </div>
+          ))}
         </div>
       </div>
 
