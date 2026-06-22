@@ -3,7 +3,7 @@ import { api, ExpenseRequest, ExpenseItem, formatMoney } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import {
   Plus, Check, X, Eye, Download, Trash2, Pencil,
-  Clock, CheckCircle2, XCircle, FileText, Printer, UserPen, Paperclip, Image,
+  Clock, CheckCircle2, XCircle, FileText, Printer, UserPen, Paperclip, Image, Loader2,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
@@ -179,27 +179,97 @@ const STATUS_CLASS: Record<string, string> = {
 
 // ─── Receipt Uploader ─────────────────────────────────────────────────────────
 
+// บีบอัด/ย่อขนาดรูปให้ data URL ไม่เกินเป้าหมาย (~1MB) ก่อนเก็บ
+const MAX_RECEIPT_BYTES = 1024 * 1024; // 1 MB
+
+function approxDataUrlBytes(dataUrl: string): number {
+  const comma = dataUrl.indexOf(',');
+  const b64 = comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl;
+  // base64: ทุก 4 ตัวอักษร = 3 ไบต์
+  return Math.floor((b64.length * 3) / 4);
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new window.Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('โหลดรูปภาพไม่สำเร็จ'));
+    img.src = src;
+  });
+}
+
+async function compressImageFile(file: File): Promise<string> {
+  const original = await readFileAsDataUrl(file);
+
+  // ไฟล์ที่ไม่ใช่รูปภาพ หรือรูปเล็กอยู่แล้ว → ใช้ของเดิม
+  if (!file.type.startsWith('image/') || file.type === 'image/gif') return original;
+  if (approxDataUrlBytes(original) <= MAX_RECEIPT_BYTES) return original;
+
+  let img: HTMLImageElement;
+  try {
+    img = await loadImage(original);
+  } catch {
+    return original; // ถ้าวาดไม่ได้ ก็เก็บของเดิมไป
+  }
+
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return original;
+
+  // ลดความละเอียดสูงสุดลงทีละขั้นจนกว่าจะเล็กพอ
+  let maxDim = 2000;
+  let best = original;
+
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+    canvas.width = Math.max(1, Math.round(img.width * scale));
+    canvas.height = Math.max(1, Math.round(img.height * scale));
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+    // ไล่ลดคุณภาพ JPEG จนกว่าจะได้ขนาดที่ต้องการ
+    for (let q = 0.8; q >= 0.4; q -= 0.1) {
+      const out = canvas.toDataURL('image/jpeg', q);
+      best = out;
+      if (approxDataUrlBytes(out) <= MAX_RECEIPT_BYTES) return out;
+    }
+
+    maxDim = Math.round(maxDim * 0.75); // ย่อขนาดลงอีกแล้วลองใหม่
+  }
+
+  return best; // ใช้ผลที่เล็กที่สุดเท่าที่ทำได้
+}
+
 export function ReceiptUploader({ images, onChange }: {
   images: string[];
   onChange: (imgs: string[]) => void;
 }) {
-  const handleFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const [busy, setBusy] = useState(false);
+
+  const handleFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    let loaded = 0;
-    const newImgs: string[] = [];
-    if (files.length === 0) return;
-    files.forEach(file => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        newImgs.push(reader.result as string);
-        loaded++;
-        if (loaded === files.length) {
-          onChange([...images, ...newImgs]);
-        }
-      };
-      reader.readAsDataURL(file);
-    });
     e.target.value = '';
+    if (files.length === 0) return;
+
+    setBusy(true);
+    try {
+      const newImgs = await Promise.all(files.map(compressImageFile));
+      onChange([...images, ...newImgs]);
+    } catch (err) {
+      console.error('อัปโหลดรูปไม่สำเร็จ', err);
+      alert('อัปโหลดรูปภาพบางรูปไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -208,9 +278,9 @@ export function ReceiptUploader({ images, onChange }: {
         <label className="text-sm font-bold text-slate-700 flex items-center gap-1.5">
           <Paperclip className="w-4 h-4 text-slate-400" /> แนบใบเสร็จ / สลิป
         </label>
-        <label className="cursor-pointer inline-flex items-center gap-1 text-blue-600 hover:text-blue-700 text-sm font-semibold">
-          <Plus className="w-4 h-4" /> เลือกรูปภาพ
-          <input type="file" accept="image/*" multiple className="hidden" onChange={handleFiles} />
+        <label className={`inline-flex items-center gap-1 text-sm font-semibold ${busy ? 'text-slate-400 cursor-wait' : 'text-blue-600 hover:text-blue-700 cursor-pointer'}`}>
+          {busy ? <><Loader2 className="w-4 h-4 animate-spin" /> กำลังประมวลผล…</> : <><Plus className="w-4 h-4" /> เลือกรูปภาพ</>}
+          <input type="file" accept="image/*" multiple className="hidden" disabled={busy} onChange={handleFiles} />
         </label>
       </div>
       {images.length > 0 ? (
@@ -234,15 +304,15 @@ export function ReceiptUploader({ images, onChange }: {
           ))}
         </div>
       ) : (
-        <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-slate-200 rounded-lg p-4 text-slate-400 text-sm cursor-pointer hover:border-blue-300 hover:text-blue-400 transition-colors">
-          <Image className="w-6 h-6" />
-          <span>คลิกเพื่อเลือกรูปใบเสร็จ / สลิป</span>
-          <input type="file" accept="image/*" multiple className="hidden" onChange={handleFiles} />
+        <label className={`flex flex-col items-center justify-center gap-2 border-2 border-dashed border-slate-200 rounded-lg p-4 text-slate-400 text-sm transition-colors ${busy ? 'cursor-wait' : 'cursor-pointer hover:border-blue-300 hover:text-blue-400'}`}>
+          {busy ? <Loader2 className="w-6 h-6 animate-spin" /> : <Image className="w-6 h-6" />}
+          <span>{busy ? 'กำลังประมวลผลรูปภาพ…' : 'คลิกเพื่อเลือกรูปใบเสร็จ / สลิป'}</span>
+          <input type="file" accept="image/*" multiple className="hidden" disabled={busy} onChange={handleFiles} />
         </label>
       )}
-      {images.length > 0 && (
-        <p className="text-xs text-slate-400 mt-1">{images.length} รูปภาพ — คลิกรูปเพื่อดูขยาย</p>
-      )}
+      <p className="text-xs text-slate-400 mt-1">
+        {images.length > 0 ? `${images.length} รูปภาพ — คลิกรูปเพื่อดูขยาย` : 'รองรับไฟล์ขนาดใหญ่ ระบบจะย่อขนาดให้อัตโนมัติ (ไม่เกิน 1 MB ต่อรูป)'}
+      </p>
     </div>
   );
 }
