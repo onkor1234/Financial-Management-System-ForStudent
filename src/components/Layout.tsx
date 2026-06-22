@@ -14,14 +14,14 @@ export function Layout() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const allNavigation = [
-    { name: 'แดชบอร์ด',            href: '/',            icon: LayoutDashboard },
-    { name: 'รายการเรียกเก็บเงิน', href: '/payments',    icon: Receipt },
-    { name: 'รายการเบิกจ่าย',      href: '/expenses',    icon: FileText },
-    { name: 'งบประมาณระบบ',        href: '/budget',      icon: Wallet },
-    { name: 'รายชื่อนักศึกษา',     href: '/students',    icon: Users },
-    { name: 'Master Data',          href: '/master-data', icon: Database },
-    { name: 'จัดการสมาชิก',        href: '/users',       icon: UserCog },
-    { name: 'ตั้งค่าลายเซ็น',      href: '/signature',   icon: PenLine },
+    { name: 'แดชบอร์ด',            href: '/',            icon: LayoutDashboard, color: 'text-sky-400',     activeBg: 'bg-sky-500/15',     activeText: 'text-sky-300',     activeBorder: 'border-sky-500/30' },
+    { name: 'รายการเรียกเก็บเงิน', href: '/payments',    icon: Receipt,         color: 'text-emerald-400', activeBg: 'bg-emerald-500/15', activeText: 'text-emerald-300', activeBorder: 'border-emerald-500/30' },
+    { name: 'รายการเบิกจ่าย',      href: '/expenses',    icon: FileText,        color: 'text-amber-400',   activeBg: 'bg-amber-500/15',   activeText: 'text-amber-300',   activeBorder: 'border-amber-500/30' },
+    { name: 'งบประมาณระบบ',        href: '/budget',      icon: Wallet,          color: 'text-violet-400',  activeBg: 'bg-violet-500/15',  activeText: 'text-violet-300',  activeBorder: 'border-violet-500/30' },
+    { name: 'รายชื่อนักศึกษา',     href: '/students',    icon: Users,           color: 'text-rose-400',    activeBg: 'bg-rose-500/15',    activeText: 'text-rose-300',    activeBorder: 'border-rose-500/30' },
+    { name: 'Master Data',          href: '/master-data', icon: Database,        color: 'text-cyan-400',    activeBg: 'bg-cyan-500/15',    activeText: 'text-cyan-300',    activeBorder: 'border-cyan-500/30' },
+    { name: 'จัดการสมาชิก',        href: '/users',       icon: UserCog,         color: 'text-orange-400',  activeBg: 'bg-orange-500/15',  activeText: 'text-orange-300',  activeBorder: 'border-orange-500/30' },
+    { name: 'ตั้งค่าลายเซ็น',      href: '/signature',   icon: PenLine,         color: 'text-teal-400',    activeBg: 'bg-teal-500/15',    activeText: 'text-teal-300',    activeBorder: 'border-teal-500/30' },
   ];
 
   const defaultOpPages = ['/', '/payments', '/expenses', '/signature'];
@@ -126,12 +126,12 @@ export function Layout() {
                       onClick={() => setIsSidebarOpen(false)}
                       className={`group flex items-center p-3 rounded-lg transition-colors ${
                         isActive
-                          ? 'bg-blue-600/20 text-blue-400 border border-blue-600/30'
-                          : 'text-slate-400 hover:text-white border border-transparent'
+                          ? `${item.activeBg} ${item.activeText} border ${item.activeBorder}`
+                          : 'text-slate-300 hover:text-white hover:bg-white/5 border border-transparent'
                       }`}
                     >
                       <item.icon
-                        className={`mr-3 flex-shrink-0 h-5 w-5`}
+                        className={`mr-3 flex-shrink-0 h-5 w-5 transition-transform group-hover:scale-110 ${item.color}`}
                         aria-hidden="true"
                       />
                       <span className="font-medium">{item.name}</span>
