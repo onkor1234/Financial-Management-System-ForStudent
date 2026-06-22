@@ -682,7 +682,7 @@ export function ReceiptAiButton({ images, onExtract }: {
         busy ? 'bg-violet-300 cursor-wait'
              : 'bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-700 hover:to-fuchsia-700'}`}>
       {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-      {busy ? 'AI กำลังวิเคราะห์ใบเสร็จ…' : 'AI วิเคราะห์ใบเสร็จ (Gemini 2.5) — แม่นที่สุด'}
+      {busy ? 'AI กำลังวิเคราะห์ใบเสร็จ…' : 'AI วิเคราะห์ใบเสร็จ — แม่นที่สุด'}
     </button>
   );
 }
