@@ -50,7 +50,7 @@ $recentExpenses = $pdo->query(
      FROM `expense_requests` er
      LEFT JOIN `users` u ON u.id = er.created_by
      LEFT JOIN `departments` d ON d.id = u.department_id
-     ORDER BY er.created_at DESC LIMIT 8"
+     ORDER BY er.created_at DESC"
 )->fetchAll();
 
 $paymentRequests = $pdo->query(
