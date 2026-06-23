@@ -169,6 +169,24 @@ export interface DashboardData {
   budgetAdditions: BudgetAddition[];
 }
 
+export interface AuditLogEntry {
+  id: number;
+  user_id: number | null;
+  username: string | null;
+  method: string;
+  endpoint: string;
+  detail: string | null;
+  ip: string | null;
+  created_at: string;
+}
+
+export interface VisitStats {
+  total: number;
+  today: number;
+  unique: number;
+  daily: { day: string; count: number }[];
+}
+
 // ─── HTTP helper ─────────────────────────────────────────────────────────────
 
 const BASE = '/api';
@@ -362,6 +380,16 @@ export const api = {
 
     create: (data: { amount: number; description: string }) =>
       request<BudgetAddition>('POST', '/budget.php', data),
+  },
+
+  audit: {
+    list: (limit = 300) => request<AuditLogEntry[]>('GET', `/audit_log.php?limit=${limit}`),
+    clear: () => request<{ success: boolean }>('DELETE', '/audit_log.php'),
+  },
+
+  visits: {
+    record: (path: string) => request<{ success: boolean }>('POST', '/visits.php', { path }),
+    stats: () => request<VisitStats>('GET', '/visits.php'),
   },
 
   dashboard: {

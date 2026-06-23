@@ -1,7 +1,7 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
-import { LayoutDashboard, Users, Receipt, FileText, LogOut, LogIn, Menu, X, Database, Wallet, UserCog, Pencil, PenLine } from 'lucide-react';
+import { LayoutDashboard, Users, Receipt, FileText, LogOut, LogIn, Menu, X, Database, Wallet, UserCog, Pencil, PenLine, ScrollText } from 'lucide-react';
 import { useState, useRef } from 'react';
 
 export function Layout() {
@@ -22,6 +22,7 @@ export function Layout() {
     { name: 'Master Data',          href: '/master-data', icon: Database,        color: 'text-cyan-400',    activeBg: 'bg-cyan-500/15',    activeText: 'text-cyan-300',    activeBorder: 'border-cyan-500/30' },
     { name: 'จัดการสมาชิก',        href: '/users',       icon: UserCog,         color: 'text-orange-400',  activeBg: 'bg-orange-500/15',  activeText: 'text-orange-300',  activeBorder: 'border-orange-500/30' },
     { name: 'ตั้งค่าลายเซ็น',      href: '/signature',   icon: PenLine,         color: 'text-teal-400',    activeBg: 'bg-teal-500/15',    activeText: 'text-teal-300',    activeBorder: 'border-teal-500/30' },
+    { name: 'บันทึกการใช้งาน',     href: '/audit-log',   icon: ScrollText,      color: 'text-fuchsia-400', activeBg: 'bg-fuchsia-500/15', activeText: 'text-fuchsia-300', activeBorder: 'border-fuchsia-500/30' },
   ];
 
   const defaultOpPages = ['/', '/payments', '/expenses', '/signature'];
@@ -29,6 +30,8 @@ export function Layout() {
   const masterDataLegacy = ['/sections', '/majors'];
 
   const canAccess = (href: string): boolean => {
+    // Audit log is admin-only, regardless of allowed_pages.
+    if (href === '/audit-log') return user?.role === 'admin';
     if (!user?.allowed_pages || user.allowed_pages.length === 0) return true;
     if (href === '/signature') return true; // always accessible
     if (href === '/master-data') {

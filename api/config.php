@@ -37,6 +37,12 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+// ─── Capture raw request body once (reused by getBody + audit logger) ─────────
+$GLOBALS['__rawInput'] = file_get_contents('php://input');
+
+// ─── Audit logging: auto-record authenticated mutating requests on shutdown ───
+register_shutdown_function('logAuditRequest');
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function jsonResponse(mixed $data, int $status = 200): void
 {
@@ -52,8 +58,97 @@ function jsonError(string $message, int $status = 400): void
 
 function getBody(): array
 {
-    $raw = file_get_contents('php://input');
+    $raw = $GLOBALS['__rawInput'] ?? file_get_contents('php://input');
     return json_decode($raw, true) ?? [];
+}
+
+/**
+ * Shutdown handler: persist an audit-log row for every authenticated request
+ * that changes data (POST/PUT/PATCH/DELETE). Runs automatically for any endpoint
+ * that includes config.php + db.php, so no per-endpoint instrumentation needed.
+ * Failures here must never break the actual response.
+ */
+function logAuditRequest(): void
+{
+    $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+    if (!in_array($method, ['POST', 'PUT', 'PATCH', 'DELETE'], true)) {
+        return;
+    }
+    if (empty($_SESSION['user_id'])) {
+        return; // only log actions by logged-in users
+    }
+
+    // Skip the audit/visit endpoints themselves to avoid noise & recursion.
+    $script = basename((string)($_SERVER['SCRIPT_NAME'] ?? ''));
+    if (in_array($script, ['audit_log.php', 'visits.php'], true)) {
+        return;
+    }
+
+    // $pdo is created at global scope in db.php; skip if the endpoint didn't load it.
+    if (empty($GLOBALS['pdo']) || !($GLOBALS['pdo'] instanceof PDO)) {
+        return;
+    }
+    $pdo = $GLOBALS['pdo'];
+
+    try {
+        $uid = (int)$_SESSION['user_id'];
+
+        $username = null;
+        try {
+            $s = $pdo->prepare("SELECT username FROM `users` WHERE id = ?");
+            $s->execute([$uid]);
+            $username = $s->fetchColumn() ?: null;
+        } catch (Exception $e) { /* ignore */ }
+
+        $endpoint = (string)($_SERVER['REQUEST_URI'] ?? $script);
+        if (mb_strlen($endpoint) > 255) {
+            $endpoint = mb_substr($endpoint, 0, 255);
+        }
+
+        $ip = $_SERVER['REMOTE_ADDR'] ?? null;
+        $detail = auditSanitizeBody($GLOBALS['__rawInput'] ?? '');
+
+        $stmt = $pdo->prepare(
+            "INSERT INTO `audit_logs` (user_id, username, method, endpoint, detail, ip)
+             VALUES (?, ?, ?, ?, ?, ?)"
+        );
+        $stmt->execute([$uid, $username, $method, $endpoint, $detail, $ip]);
+    } catch (Exception $e) { /* never break the response */ }
+}
+
+/**
+ * Turn a raw JSON request body into a compact, human-readable summary that is
+ * safe to store: sensitive/huge fields are masked, long strings truncated.
+ */
+function auditSanitizeBody(string $raw): ?string
+{
+    if ($raw === '') {
+        return null;
+    }
+    $data = json_decode($raw, true);
+    if (!is_array($data)) {
+        return mb_strlen($raw) > 200 ? mb_substr($raw, 0, 200) . '…' : $raw;
+    }
+
+    $hidden = ['password', 'receipt_image', 'receipt_images', 'profile_image', 'signature', 'requester_signature'];
+    $clean  = [];
+    foreach ($data as $k => $v) {
+        if (in_array($k, $hidden, true)) {
+            $clean[$k] = '[ซ่อน]';
+        } elseif (is_string($v)) {
+            $clean[$k] = mb_strlen($v) > 200 ? mb_substr($v, 0, 200) . '…' : $v;
+        } elseif (is_array($v)) {
+            $clean[$k] = '[' . count($v) . ' รายการ]';
+        } else {
+            $clean[$k] = $v;
+        }
+    }
+
+    $json = json_encode($clean, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if ($json === false) {
+        return null;
+    }
+    return mb_strlen($json) > 2000 ? mb_substr($json, 0, 2000) : $json;
 }
 
 function normalizeReceiptImage(mixed $value): ?string

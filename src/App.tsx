@@ -20,6 +20,8 @@ import { ManageUsers } from './pages/ManageUsers';
 import { MasterData } from './pages/MasterData';
 import { PublicPaymentStatus } from './pages/PublicPaymentStatus';
 import { SignatureSettings } from './pages/SignatureSettings';
+import { AuditLog } from './pages/AuditLog';
+import { api } from './lib/api';
 
 // Protected Route Component
 function ProtectedRoute({ children, requiredRole }: { children: React.ReactNode, requiredRole?: 'admin' | 'operation' }) {
@@ -49,6 +51,10 @@ function ProtectedRoute({ children, requiredRole }: { children: React.ReactNode,
     const path = location.pathname;
     // /signature is always accessible to all logged-in users
     if (path === '/signature') return <>{children}</>;
+    // /audit-log is gated by admin role, independent of allowed_pages
+    if (path === '/audit-log') {
+      return user.role === 'admin' ? <>{children}</> : <Navigate to="/" replace />;
+    }
     // backward compat: /master-data is accessible if user had /sections or /majors
     const allowed = user.allowed_pages.includes(path) ||
       (path === '/master-data' && (
@@ -68,7 +74,16 @@ function ProtectedRoute({ children, requiredRole }: { children: React.ReactNode,
   return <>{children}</>;
 }
 
+// Record one website visit per full page load (guarded against StrictMode double-mount).
+let visitRecorded = false;
+
 export default function App() {
+  React.useEffect(() => {
+    if (visitRecorded) return;
+    visitRecorded = true;
+    api.visits.record(window.location.pathname).catch(() => { /* non-critical */ });
+  }, []);
+
   return (
     <AuthProvider>
       <BrowserRouter>
@@ -148,6 +163,14 @@ export default function App() {
               element={
                 <ProtectedRoute>
                   <SignatureSettings />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="audit-log"
+              element={
+                <ProtectedRoute requiredRole="admin">
+                  <AuditLog />
                 </ProtectedRoute>
               }
             />

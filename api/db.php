@@ -121,6 +121,29 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS `departments` (
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
+// ─── Audit log: records every authenticated mutating request (POST/PUT/PATCH/DELETE)
+$pdo->exec("CREATE TABLE IF NOT EXISTS `audit_logs` (
+    `id`         BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `user_id`    INT          DEFAULT NULL,
+    `username`   VARCHAR(100) DEFAULT NULL,
+    `method`     VARCHAR(10)  NOT NULL,
+    `endpoint`   VARCHAR(255) NOT NULL,
+    `detail`     TEXT         DEFAULT NULL,
+    `ip`         VARCHAR(45)  DEFAULT NULL,
+    `created_at` TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+    INDEX `idx_audit_created` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+// ─── Site visits: one row per page load (used for website visit count) ────────
+$pdo->exec("CREATE TABLE IF NOT EXISTS `site_visits` (
+    `id`         BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `path`       VARCHAR(255) DEFAULT NULL,
+    `ip`         VARCHAR(45)  DEFAULT NULL,
+    `user_agent` VARCHAR(255) DEFAULT NULL,
+    `created_at` TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+    INDEX `idx_visit_created` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
 // ─── Auto-migration: add profile_image column if missing ─────────────────────
 try {
     $pdo->exec("ALTER TABLE `users` ADD COLUMN `profile_image` LONGTEXT DEFAULT NULL");
