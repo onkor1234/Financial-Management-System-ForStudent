@@ -13,16 +13,36 @@ export function Layout() {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const allNavigation = [
-    { name: 'แดชบอร์ด',            href: '/',            icon: LayoutDashboard, color: 'text-sky-400',     activeBg: 'bg-sky-500/15',     activeText: 'text-sky-300',     activeBorder: 'border-sky-500/30' },
-    { name: 'รายการเรียกเก็บเงิน', href: '/payments',    icon: Receipt,         color: 'text-emerald-400', activeBg: 'bg-emerald-500/15', activeText: 'text-emerald-300', activeBorder: 'border-emerald-500/30' },
-    { name: 'รายการเบิกจ่าย',      href: '/expenses',    icon: FileText,        color: 'text-amber-400',   activeBg: 'bg-amber-500/15',   activeText: 'text-amber-300',   activeBorder: 'border-amber-500/30' },
-    { name: 'งบประมาณระบบ',        href: '/budget',      icon: Wallet,          color: 'text-violet-400',  activeBg: 'bg-violet-500/15',  activeText: 'text-violet-300',  activeBorder: 'border-violet-500/30' },
-    { name: 'รายชื่อนักศึกษา',     href: '/students',    icon: Users,           color: 'text-rose-400',    activeBg: 'bg-rose-500/15',    activeText: 'text-rose-300',    activeBorder: 'border-rose-500/30' },
-    { name: 'Master Data',          href: '/master-data', icon: Database,        color: 'text-cyan-400',    activeBg: 'bg-cyan-500/15',    activeText: 'text-cyan-300',    activeBorder: 'border-cyan-500/30' },
-    { name: 'จัดการสมาชิก',        href: '/users',       icon: UserCog,         color: 'text-orange-400',  activeBg: 'bg-orange-500/15',  activeText: 'text-orange-300',  activeBorder: 'border-orange-500/30' },
-    { name: 'ตั้งค่าลายเซ็น',      href: '/signature',   icon: PenLine,         color: 'text-teal-400',    activeBg: 'bg-teal-500/15',    activeText: 'text-teal-300',    activeBorder: 'border-teal-500/30' },
-    { name: 'บันทึกการใช้งาน',     href: '/audit-log',   icon: ScrollText,      color: 'text-fuchsia-400', activeBg: 'bg-fuchsia-500/15', activeText: 'text-fuchsia-300', activeBorder: 'border-fuchsia-500/30' },
+  const navGroups = [
+    {
+      label: 'ภาพรวม',
+      items: [
+        { name: 'แดชบอร์ด',            href: '/',            icon: LayoutDashboard, color: 'text-sky-400',     activeBg: 'bg-sky-500/15',     activeText: 'text-sky-300',     activeBorder: 'border-sky-500/30' },
+      ],
+    },
+    {
+      label: 'การเงิน',
+      items: [
+        { name: 'รายการเรียกเก็บเงิน', href: '/payments',    icon: Receipt,         color: 'text-emerald-400', activeBg: 'bg-emerald-500/15', activeText: 'text-emerald-300', activeBorder: 'border-emerald-500/30' },
+        { name: 'รายการเบิกจ่าย',      href: '/expenses',    icon: FileText,        color: 'text-amber-400',   activeBg: 'bg-amber-500/15',   activeText: 'text-amber-300',   activeBorder: 'border-amber-500/30' },
+        { name: 'งบประมาณระบบ',        href: '/budget',      icon: Wallet,          color: 'text-violet-400',  activeBg: 'bg-violet-500/15',  activeText: 'text-violet-300',  activeBorder: 'border-violet-500/30' },
+      ],
+    },
+    {
+      label: 'ข้อมูลหลัก',
+      items: [
+        { name: 'รายชื่อนักศึกษา',     href: '/students',    icon: Users,           color: 'text-rose-400',    activeBg: 'bg-rose-500/15',    activeText: 'text-rose-300',    activeBorder: 'border-rose-500/30' },
+        { name: 'Master Data',          href: '/master-data', icon: Database,        color: 'text-cyan-400',    activeBg: 'bg-cyan-500/15',    activeText: 'text-cyan-300',    activeBorder: 'border-cyan-500/30' },
+      ],
+    },
+    {
+      label: 'ตั้งค่าระบบ',
+      items: [
+        { name: 'จัดการสมาชิก',        href: '/users',       icon: UserCog,         color: 'text-orange-400',  activeBg: 'bg-orange-500/15',  activeText: 'text-orange-300',  activeBorder: 'border-orange-500/30' },
+        { name: 'ตั้งค่าลายเซ็น',      href: '/signature',   icon: PenLine,         color: 'text-teal-400',    activeBg: 'bg-teal-500/15',    activeText: 'text-teal-300',    activeBorder: 'border-teal-500/30' },
+        { name: 'บันทึกการใช้งาน',     href: '/audit-log',   icon: ScrollText,      color: 'text-fuchsia-400', activeBg: 'bg-fuchsia-500/15', activeText: 'text-fuchsia-300', activeBorder: 'border-fuchsia-500/30' },
+      ],
+    },
   ];
 
   const defaultOpPages = ['/', '/payments', '/expenses', '/signature'];
@@ -41,16 +61,16 @@ export function Layout() {
     return user.allowed_pages.includes(href);
   };
 
-  let navigation;
-  if (!user) {
-    navigation = allNavigation.filter(item => item.href === '/');
-  } else if (user.allowed_pages && user.allowed_pages.length > 0) {
-    navigation = allNavigation.filter(item => canAccess(item.href));
-  } else {
-    navigation = user.role === 'admin'
-      ? allNavigation
-      : allNavigation.filter(item => defaultOpPages.includes(item.href));
-  }
+  const itemVisible = (href: string): boolean => {
+    if (!user) return href === '/';
+    if (user.allowed_pages && user.allowed_pages.length > 0) return canAccess(href);
+    return user.role === 'admin' || defaultOpPages.includes(href);
+  };
+
+  // Filter each group's items by visibility, then drop empty groups.
+  const navigation = navGroups
+    .map(group => ({ ...group, items: group.items.filter(item => itemVisible(item.href)) }))
+    .filter(group => group.items.length > 0);
 
   const showSidebar = !!user;
 
@@ -119,28 +139,35 @@ export function Layout() {
               <p className="text-xs text-slate-400 uppercase tracking-widest font-semibold">คณะวิทยาศาสตร์และเทคโนโลยี</p>
             </div>
             <div className="flex-1 flex flex-col overflow-y-auto w-full pt-5 pb-4">
-              <nav className="flex-1 px-4 space-y-2">
-                {navigation.map((item) => {
-                  const isActive = location.pathname === item.href;
-                  return (
-                    <Link
-                      key={item.name}
-                      to={item.href}
-                      onClick={() => setIsSidebarOpen(false)}
-                      className={`group flex items-center p-3 rounded-lg transition-colors ${
-                        isActive
-                          ? `${item.activeBg} ${item.activeText} border ${item.activeBorder}`
-                          : 'text-slate-300 hover:text-white hover:bg-white/5 border border-transparent'
-                      }`}
-                    >
-                      <item.icon
-                        className={`mr-3 flex-shrink-0 h-5 w-5 transition-transform group-hover:scale-110 ${item.color}`}
-                        aria-hidden="true"
-                      />
-                      <span className="font-medium">{item.name}</span>
-                    </Link>
-                  );
-                })}
+              <nav className="flex-1 px-4 space-y-6">
+                {navigation.map((group) => (
+                  <div key={group.label} className="space-y-1.5">
+                    <p className="px-3 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                      {group.label}
+                    </p>
+                    {group.items.map((item) => {
+                      const isActive = location.pathname === item.href;
+                      return (
+                        <Link
+                          key={item.name}
+                          to={item.href}
+                          onClick={() => setIsSidebarOpen(false)}
+                          className={`group flex items-center p-3 rounded-lg transition-colors ${
+                            isActive
+                              ? `${item.activeBg} ${item.activeText} border ${item.activeBorder}`
+                              : 'text-slate-300 hover:text-white hover:bg-white/5 border border-transparent'
+                          }`}
+                        >
+                          <item.icon
+                            className={`mr-3 flex-shrink-0 h-5 w-5 transition-transform group-hover:scale-110 ${item.color}`}
+                            aria-hidden="true"
+                          />
+                          <span className="font-medium">{item.name}</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                ))}
               </nav>
               {/* User Section for Sidebar */}
               <div className="p-6 bg-slate-900 mt-auto">
